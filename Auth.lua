@@ -913,7 +913,7 @@ function Auth.new(opts)
 			infoExpires.TextColor3 = DIM_TEXT
 		elseif expiry.mode == "lifetime" then
 			infoExpires.Text = "Lifetime"
-			infoExpires.TextColor3 = GOOD
+			infoExpires.TextColor3 = TEXT_COLOR
 		elseif expiry.mode == "timed" then
 			local left = expiry.target - os.clock()
 			if left <= 0 then
