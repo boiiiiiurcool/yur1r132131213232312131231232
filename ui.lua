@@ -21,15 +21,6 @@
 --   * a module may return { Unload = fn }; it is called when the window unloads
 --   * finder.lua goes on the Server tab:  win:GetPage("Server")  (also win.MainPage)
 --
--- LOOK: DARK FROSTED GLASS (the charcoal theme stays dominant, only the big floating surfaces are glass)
---   window / keybinds panel / watermark / toast: #171719 at 78% opacity, white outline at 8%, 9px corners.
---   Panels (tab bar, content card) are solid #202023, cards inside the pages are solid #29292D,
---   accent #D65B63, secondary text #A1A1AA.
---   Blur: Roblox cannot blur "behind one UI element", so the frosted effect is a BlurEffect (14px by default) on
---   the game view while the main window is open. It fades out when the window is hidden / minimized / closed.
---   Options:  Blur = true / false     BlurSize = 14
---   Themes for modules: T.CARD (solid card), T.PANEL (panel), T.GLASS (window colour), T.GLASS_T (0.22).
---
 -- WINDOW OBJECT (win)
 --   win:Unload()                 win:OnUnload(fn)             win:IsAlive()
 --   win:Toast(text, seconds)     win:ShowTab(id)              win:GetTab()           win:OnTab(fn(id))
@@ -48,13 +39,6 @@
 --   win:Toggle(id)               -- flip it (with a toast)
 --   win:GetToggle(id)            -- true / false
 --   win:OnToggle(id, fn(on))     -- called whenever it changes (key press, SetToggle, Toggle) so your switch can follow
---
--- LINKING MODULES FROM THE KEYBINDS PANEL (no changes to the module files)
---   The Keybinds panel is docked to the window. Press "+ Link a module", switch the module OFF, click its switch
---   (change tabs if you need to). A row appears with its name, a status dot and a key. Press the key you want.
---   From then on the key presses that switch for you. Needs an executor with firesignal or getconnections.
---   Only real buttons (TextButton / ImageButton) can be linked. Click the dot = flip it, right click the dot =
---   only correct the dot, x = remove the row. Code can do the same: win:LinkToggle(id, button) / win:StartLink().
 --
 -- Left / Right arrow keys do NOT switch tabs on purpose (games use them to move); click the tabs.
 -- Run it on its own (no modules) for a preview:   loadstring(game:HttpGet("https://.../Y1UI.lua"))().new({})
@@ -97,23 +81,18 @@ function UI.new(opts)
 	end
 
 	---------------------------------------------------------------------
-	-- THEME: dark frosted glass (charcoal stays dominant)
+	-- THEME (same colours as Welcome.lua / Auth.lua)
 	---------------------------------------------------------------------
-	local BG         = Color3.fromRGB(23, 23, 25)     -- #171719 window glass (78% opaque)
-	local WELL       = Color3.fromRGB(32, 32, 35)     -- #202023 panels: tab bar, content card, inputs
-	local CARD       = Color3.fromRGB(41, 41, 45)     -- #29292D solid cards inside the pages
-	local BORDER     = Color3.fromRGB(48, 48, 52)     -- solid inner lines (about white at 8% on a panel)
-	local ICON       = Color3.fromRGB(161, 161, 170)  -- #A1A1AA secondary
+	local BG         = Color3.fromRGB(35, 35, 35)     -- window
+	local WELL       = Color3.fromRGB(28, 28, 28)     -- tab bar + content card
+	local BORDER     = Color3.fromRGB(54, 54, 54)
+	local ICON       = Color3.fromRGB(176, 176, 182)
 	local ICON_HOVER = Color3.fromRGB(240, 240, 244)
 	local TEXT_COLOR = Color3.fromRGB(232, 232, 236)
 	local DIM_TEXT   = Color3.fromRGB(122, 122, 128)
-	local CALM_RED   = Color3.fromRGB(214, 91, 99)    -- #D65B63 accent
+	local CALM_RED   = Color3.fromRGB(196, 92, 92)    -- accent
 	local HOVER_GREY = Color3.fromRGB(62, 62, 66)
 	local ON_GREEN   = Color3.fromRGB(110, 200, 140)  -- "module is on" dot
-
-	local GLASS_T      = 0.22   -- glass surfaces are 78% opaque
-	local GLASS_LINE_T = 0.92   -- glass outline: white at 8%
-	local GLASS_R      = 9      -- corner radius of the glass surfaces
 
 	local RADIUS = 4
 
@@ -143,12 +122,8 @@ function UI.new(opts)
 		BAD = Color3.fromRGB(214, 90, 90),
 		WARN = Color3.fromRGB(226, 168, 72),
 		-- names used by the module files
-		CARD = CARD,                                  -- solid cards inside the pages
-		PANEL = WELL,                                 -- solid panels
-		GLASS = BG,                                   -- the glass window colour
-		GLASS_T = GLASS_T,
-		SIDEBAR_BG = CARD,                            -- the connected group backgrounds on a page
-		POPUP_BG = CARD,                              -- the little settings pop-ups
+		SIDEBAR_BG = BG,                              -- the connected group backgrounds on a page
+		POPUP_BG = Color3.fromRGB(40, 40, 42),        -- the little settings pop-ups
 		CLUSTER_BG = WELL,                            -- switch tracks, slider tracks, drop-down buttons
 		JOIN_BG = Color3.fromRGB(232, 232, 236),      -- switch "on" colour / light buttons
 		BLACK = Color3.fromRGB(10, 10, 11),
@@ -210,16 +185,6 @@ function UI.new(opts)
 		l.TextTruncate = Enum.TextTruncate.AtEnd
 		l.Parent = parent
 		return l
-	end
-
-	-- the glass outline: white at 8% (a real transparent line, so it works over the blurred game)
-	local function glassStroke(obj, thickness)
-		return stroke(obj, Color3.new(1, 1, 1), thickness or 1, GLASS_LINE_T)
-	end
-
-	-- tweens a glass outline to a colour / transparency (hover, focus)
-	local function glassLineTo(s, color, transparency)
-		TweenService:Create(s, FAST, { Color = color, Transparency = transparency }):Play()
 	end
 
 	-- the helper table every module page gets as its third argument (H)
@@ -572,49 +537,6 @@ function UI.new(opts)
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 	}, playerGui)
 
-	---------------------------------------------------------------------
-	-- BLUR: a BlurEffect on the game view while the main window is open (fades in / out)
-	---------------------------------------------------------------------
-	local Lighting = game:GetService("Lighting")
-	local BLUR_ON = (opts.Blur ~= false)
-	local BLUR_SIZE = tonumber(opts.BlurSize) or 14
-	local blurFx = nil
-	do
-		local oldFx = Lighting:FindFirstChild("Y1Blur")
-		if oldFx then
-			oldFx:Destroy()
-		end
-	end
-
-	local function setBlur(on)
-		if not BLUR_ON then
-			return
-		end
-		if not blurFx or not blurFx.Parent then
-			if not on then
-				return
-			end
-			blurFx = Instance.new("BlurEffect")
-			blurFx.Name = "Y1Blur"
-			blurFx.Size = 0
-			blurFx.Parent = Lighting
-		end
-		local target = 0
-		if on then
-			target = BLUR_SIZE
-		end
-		TweenService:Create(blurFx, SMOOTH, { Size = target }):Play()
-	end
-
-	local function killBlur()
-		if blurFx then
-			pcall(function()
-				blurFx:Destroy()
-			end)
-			blurFx = nil
-		end
-	end
-
 	-- where the window starts: a little right of the middle, so the keybinds panel fits on its left
 	local START_POS = UDim2.new(0.5, 132, 0.5, 0)
 	if typeof(opts.Position) == "UDim2" then
@@ -654,11 +576,10 @@ function UI.new(opts)
 		Position = START_POS,
 		Size = UDim2.fromOffset(WIN_W, WIN_H),
 		BackgroundColor3 = BG,
-		BackgroundTransparency = GLASS_T,
 		BorderSizePixel = 0,
 		GroupTransparency = 1,
 	}, gui)
-	corner(window, GLASS_R)
+	corner(window, 8)
 	local windowScale = new("UIScale", { Scale = fitScale * 0.92 }, window)
 
 	do
@@ -670,8 +591,8 @@ function UI.new(opts)
 			BorderSizePixel = 0,
 			ZIndex = 60,
 		}, window)
-		corner(outline, GLASS_R - 1)
-		glassStroke(outline, 1)
+		corner(outline, 7)
+		stroke(outline, BORDER, 1, 0)
 	end
 
 	-- top bar (drag handle)
@@ -1195,21 +1116,19 @@ function UI.new(opts)
 	end
 
 	---------------------------------------------------------------------
-	-- KEYBINDS PANEL (docked to the main window: it sits on the window's left side, follows it when it moves,
-	-- and hides / shows together with it; if there is no room on the left it docks on the right)
-	--   * LINK A MODULE from here, no changes to the module files needed:
-	--       press "+ Link a module", switch the module OFF, then click its switch on any tab.
-	--       A row appears (name, status dot, key). Press the key you want right after linking.
-	--   * the key presses that switch for you (and the dot follows the switch if you click it yourself)
-	--   * click the dot = flip the module, right click the dot = only correct the dot, x = remove the row
+	-- KEYBINDS PANEL (small card that spawns at the top left of the main window, top edges level)
+	--   * drag it by its title bar; it stays where you put it
+	--   * opens / closes with the keyboard button in the top bar (left of minimize) and closes with its x
 	--   * click a key box, then press a key or a mouse button to change it (Escape = cancel, Backspace = none)
-	--   * code can still add rows:  win:AddBind(...)  /  win:AddToggle(...)  (or opts.Binds / opts.Toggles)
+	--   * plain rows are added by the modules:  win:AddBind({ id = "Aimbot", title = "Aimbot", wired = true,
+	--         default = { kind = "Key", key = Enum.KeyCode.E } })      (or pass opts.Binds when creating the window)
+	--     and read with  win:IsBind(id, input)  /  win:GetBind(id)
+	--   * modules you can turn on / off are added with win:AddToggle (or opts.Toggles). They get the same row
+	--     plus a status dot, and their key flips them on / off. See the MODULE TOGGLES notes at the top.
 	---------------------------------------------------------------------
-	local BINDS = {}      -- ordered list of the defs
-	local bindDef = {}    -- [id] = def
-	local binds = {}      -- [id] = current key
-	local rows = {}       -- [id] = { dot, name, pill, line, x, link = { btn, signal, conn, firing } }
-	local toggles = {}    -- [id] = { def, on, listeners }
+	local BINDS = {}
+	local bindDef = {}
+	local binds = {}
 
 	local function bindName(b)
 		if not b then
@@ -1238,47 +1157,31 @@ function UI.new(opts)
 		return t == Enum.UserInputType.MouseButton3
 	end
 
-	local KB_W = 256
+	local KB_W = 232
 	local KB_HEAD = 42
 	local KB_ROW = 34
-	local KB_FOOT = 48
 	local KB_LINE_HOVER = Color3.fromRGB(96, 96, 102)
 	local kbOpen = true
 	local kbSuppressed = false
 	local kbListening = nil     -- id of the bind that is waiting for a key
-	local kbAuto = nil          -- id that started listening by itself right after linking (a click does not bind it)
 	local kbLastBind = 0
 	local kbToken = 0
-	local linkMode = false
-	local linkCounter = 0
-
-	-- filled in further down
-	local setToggle = nil
-	local flipToggle = nil
-	local kbRemove = nil
-	local setLinkMode = nil
-	local kbPaint = nil
-
-	local function kbBase()
-		if maximized then
-			return 1
-		end
-		return fitScale
-	end
+	local kbPills = {}
+	local kbLines = {}
+	local kbDots = {}           -- [id] = the on / off dot of a toggle row
 
 	local kbPanel = new("CanvasGroup", {
 		Name = "Keybinds",
 		AnchorPoint = Vector2.new(0, 0),
 		Position = UDim2.fromOffset(0, 0),   -- kbDock() puts it next to the window every frame
-		Size = UDim2.fromOffset(KB_W, KB_HEAD + KB_ROW + KB_FOOT),
+		Size = UDim2.fromOffset(KB_W, KB_HEAD + KB_ROW + 12),
 		BackgroundColor3 = BG,
-		BackgroundTransparency = GLASS_T,
 		BorderSizePixel = 0,
 		GroupTransparency = 1,
 		Visible = false,
 	}, gui)
-	corner(kbPanel, GLASS_R)
-	local kbScale = new("UIScale", { Scale = fitScale * 0.92 }, kbPanel)
+	corner(kbPanel, 8)
+	local kbScale = new("UIScale", { Scale = 0.92 }, kbPanel)
 	do
 		local outline = new("Frame", {
 			Position = UDim2.fromOffset(1, 1),
@@ -1287,11 +1190,19 @@ function UI.new(opts)
 			BorderSizePixel = 0,
 			ZIndex = 30,
 		}, kbPanel)
-		corner(outline, GLASS_R - 1)
-		glassStroke(outline, 1)
+		corner(outline, 7)
+		stroke(outline, BORDER, 1, 0)
 	end
 
-	-- keyboard icon (calm red) + title
+	local kbHead = new("Frame", {
+		Name = "Head",
+		Size = UDim2.new(1, 0, 0, KB_HEAD),
+		BackgroundTransparency = 1,
+		Active = true,
+		ZIndex = 2,
+	}, kbPanel)
+
+	-- keyboard icon (calm red)
 	do
 		local ico = new("Frame", {
 			Position = UDim2.fromOffset(14, 13),
@@ -1326,61 +1237,10 @@ function UI.new(opts)
 		ZIndex = 3,
 	}, kbPanel)
 
-	-- the rows (scrolls with the mouse wheel when there are many)
-	local kbList = new("ScrollingFrame", {
-		Name = "List",
-		Position = UDim2.fromOffset(0, KB_HEAD),
-		Size = UDim2.new(1, 0, 1, -(KB_HEAD + KB_FOOT)),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ScrollBarThickness = 0,
-		CanvasSize = UDim2.fromOffset(0, 0),
-		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ZIndex = 2,
-	}, kbPanel)
-
 	-- shown while there are no rows
-	local kbEmpty = label(kbPanel, "Nothing linked yet", UDim2.fromOffset(0, KB_HEAD + 4), UDim2.new(1, 0, 0, KB_ROW - 4),
+	local kbEmpty = label(kbPanel, "Nothing here yet", UDim2.fromOffset(0, KB_HEAD + 4), UDim2.new(1, 0, 0, KB_ROW - 4),
 		Enum.Font.GothamMedium, 12, DIM_TEXT, Enum.TextXAlignment.Center)
 	kbEmpty.ZIndex = 3
-
-	-- footer: the "Link a module" button
-	new("Frame", {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 14, 1, -(KB_FOOT - 1)),
-		Size = UDim2.new(1, -28, 0, 1),
-		BackgroundColor3 = BORDER,
-		BorderSizePixel = 0,
-		ZIndex = 3,
-	}, kbPanel)
-	local kbLinkBtn = new("TextButton", {
-		Name = "LinkButton",
-		AutoButtonColor = false,
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -10),
-		Size = UDim2.new(1, -28, 0, 28),
-		BackgroundColor3 = WELL,
-		BorderSizePixel = 0,
-		Font = Enum.Font.GothamMedium,
-		Text = "+  Link a module",
-		TextSize = 12,
-		TextColor3 = ICON,
-		ZIndex = 4,
-	}, kbPanel)
-	corner(kbLinkBtn, 6)
-	local kbLinkStroke = stroke(kbLinkBtn, BORDER, 1, 0)
-	kbLinkBtn.MouseEnter:Connect(function()
-		if not linkMode then
-			TweenService:Create(kbLinkStroke, FAST, { Color = KB_LINE_HOVER }):Play()
-			TweenService:Create(kbLinkBtn, FAST, { TextColor3 = ICON_HOVER }):Play()
-		end
-	end)
-	kbLinkBtn.MouseLeave:Connect(function()
-		if not linkMode then
-			TweenService:Create(kbLinkStroke, FAST, { Color = BORDER }):Play()
-			TweenService:Create(kbLinkBtn, FAST, { TextColor3 = ICON }):Play()
-		end
-	end)
 
 	local function kbRefresh()
 		local show = kbOpen and not kbSuppressed
@@ -1388,20 +1248,16 @@ function UI.new(opts)
 		local tk = kbToken
 		if show then
 			kbPanel.Visible = true
-			TweenService:Create(kbScale, POP, { Scale = kbBase() }):Play()
+			TweenService:Create(kbScale, POP, { Scale = 1 }):Play()
 			TweenService:Create(kbPanel, FAST, { GroupTransparency = 0 }):Play()
 		else
 			kbListening = nil
-			kbAuto = nil
-			if linkMode and setLinkMode then
-				setLinkMode(false)
+			for id, pill in pairs(kbPills) do
+				pill.Text = bindName(binds[id])
+				pill.TextColor3 = bindDef[id].wired and ICON or DIM_TEXT
+				kbLines[id].Color = BORDER
 			end
-			for id, r in pairs(rows) do
-				r.pill.Text = bindName(binds[id])
-				r.pill.TextColor3 = bindDef[id].wired and ICON or DIM_TEXT
-				r.line.Color = BORDER
-			end
-			TweenService:Create(kbScale, LEAVE, { Scale = kbBase() * 0.92 }):Play()
+			TweenService:Create(kbScale, LEAVE, { Scale = 0.92 }):Play()
 			TweenService:Create(kbPanel, LEAVE, { GroupTransparency = 1 }):Play()
 			task.delay(LEAVE.Time + 0.02, function()
 				if tk == kbToken then
@@ -1466,133 +1322,93 @@ function UI.new(opts)
 		end)
 	end
 
-	-- the key box of one row
-	kbPaint = function(id)
-		local r = rows[id]
-		if not r then
+	-- one row per bind: name on the left, key box on the right
+	local function kbPaint(id)
+		local pill = kbPills[id]
+		if not pill then
 			return
 		end
 		if kbListening == id then
-			r.pill.Text = "Press a key"
-			TweenService:Create(r.pill, FAST, { TextColor3 = CALM_RED }):Play()
-			TweenService:Create(r.line, FAST, { Color = CALM_RED }):Play()
+			pill.Text = "Press a key"
+			TweenService:Create(pill, FAST, { TextColor3 = CALM_RED }):Play()
+			TweenService:Create(kbLines[id], FAST, { Color = CALM_RED }):Play()
 		else
-			r.pill.Text = bindName(binds[id])
+			pill.Text = bindName(binds[id])
 			local c = ICON
 			if not bindDef[id].wired then
 				c = DIM_TEXT
 			end
-			TweenService:Create(r.pill, FAST, { TextColor3 = c }):Play()
-			TweenService:Create(r.line, FAST, { Color = BORDER }):Play()
+			TweenService:Create(pill, FAST, { TextColor3 = c }):Play()
+			TweenService:Create(kbLines[id], FAST, { Color = BORDER }):Play()
 		end
 	end
 
-	-- puts every row in its place and sizes the panel to fit (never taller than the window)
-	local function kbLayout()
-		for i = 1, #BINDS do
-			local r = rows[BINDS[i].id]
-			local y = (i - 1) * KB_ROW
-			local cy = y + (KB_ROW - 4) / 2
-			local nx = 16
-			if r.dot then
-				nx = 30
-				r.dot.Position = UDim2.fromOffset(14, cy)
-			end
-			r.name.Position = UDim2.fromOffset(nx, y)
-			r.name.Size = UDim2.fromOffset(KB_W - nx - 36 - 66 - 6, KB_ROW - 4)
-			r.pill.Position = UDim2.new(1, -36, 0, cy)
-			if r.x then
-				r.x.Position = UDim2.new(1, -10, 0, cy)
-			end
-		end
-		local n = #BINDS
-		local rowsH = math.max(1, n) * KB_ROW + 4
-		kbList.CanvasSize = UDim2.fromOffset(0, n * KB_ROW + 4)
-		local maxH = WIN_H - KB_HEAD - KB_FOOT
-		kbPanel.Size = UDim2.fromOffset(KB_W, KB_HEAD + math.min(rowsH, maxH) + KB_FOOT)
-		kbEmpty.Visible = (n == 0)
-	end
-
-	-- adds a row (safe to call any time, a second call with the same id does nothing)
-	--   def.toggle    = true: a status dot in front of the name (win:AddToggle does this for you)
-	--   def.removable = true: a small x on the right that removes the row
+	-- adds a row to the panel (safe to call any time, a second call with the same id does nothing)
+	-- def.toggle = true adds the small on / off dot in front of the name (win:AddToggle does this for you)
 	local function addBind(def)
 		if type(def) ~= "table" or type(def.id) ~= "string" or bindDef[def.id] then
 			return
 		end
-		local id = def.id
-		BINDS[#BINDS + 1] = def
-		bindDef[id] = def
-		binds[id] = def.default
-		local row = {}
-		rows[id] = row
+		local i = #BINDS + 1
+		BINDS[i] = def
+		bindDef[def.id] = def
+		binds[def.id] = def.default
 
+		local y = KB_HEAD + 4 + (i - 1) * KB_ROW
 		local nameColor = TEXT_COLOR
 		if not def.wired then
 			nameColor = DIM_TEXT
 		end
 
+		local nameX = 16
 		if def.toggle then
-			local dot = new("TextButton", {
-				Name = id .. "Dot",
-				AutoButtonColor = false,
-				Text = "",
+			nameX = 32
+			local dot = new("Frame", {
+				Name = def.id .. "Dot",
 				AnchorPoint = Vector2.new(0, 0.5),
-				Size = UDim2.fromOffset(10, 10),
+				Position = UDim2.fromOffset(16, y + (KB_ROW - 4) / 2),
+				Size = UDim2.fromOffset(8, 8),
 				BackgroundColor3 = DIM_TEXT,
 				BorderSizePixel = 0,
-				ZIndex = 4,
-			}, kbList)
+				ZIndex = 3,
+			}, kbPanel)
 			corner(dot, 100)
-			row.dot = dot
-			dot.Activated:Connect(function()
-				if flipToggle then
-					flipToggle(id, false)
-				end
-			end)
-			dot.MouseButton2Click:Connect(function()
-				-- only corrects the dot (use it if the dot and the real switch ever disagree)
-				local t = toggles[id]
-				if t and setToggle then
-					setToggle(id, not t.on, true)
-				end
-			end)
+			kbDots[def.id] = dot
 		end
-
-		row.name = label(kbList, tostring(def.title or id), UDim2.fromOffset(0, 0), UDim2.fromOffset(100, KB_ROW - 4),
-			Enum.Font.GothamMedium, 13, nameColor)
-		row.name.ZIndex = 3
+		label(kbPanel, tostring(def.title or def.id), UDim2.fromOffset(nameX, y), UDim2.new(1, -(nameX + 114), 0, KB_ROW - 4),
+			Enum.Font.GothamMedium, 13, nameColor).ZIndex = 3
 
 		local pill = new("TextButton", {
-			Name = id .. "Key",
+			Name = def.id .. "Key",
 			AutoButtonColor = false,
 			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, -14, 0, y + (KB_ROW - 4) / 2),
 			Size = UDim2.fromOffset(0, 26),
 			AutomaticSize = Enum.AutomaticSize.X,
 			BackgroundColor3 = WELL,
 			BorderSizePixel = 0,
 			Font = Enum.Font.GothamMedium,
-			Text = bindName(binds[id]),
+			Text = bindName(binds[def.id]),
 			TextSize = 12,
 			TextColor3 = def.wired and ICON or DIM_TEXT,
 			ZIndex = 4,
-		}, kbList)
+		}, kbPanel)
 		corner(pill, 6)
 		new("UIPadding", { PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 11) }, pill)
 		new("UISizeConstraint", { MinSize = Vector2.new(66, 26) }, pill)
 		local line = stroke(pill, BORDER, 1, 0)
-		row.pill = pill
-		row.line = line
+		kbPills[def.id] = pill
+		kbLines[def.id] = line
 
 		pill.MouseEnter:Connect(function()
-			if kbListening ~= id then
+			if kbListening ~= def.id then
 				TweenService:Create(line, FAST, { Color = KB_LINE_HOVER }):Play()
 				TweenService:Create(pill, FAST, { TextColor3 = ICON_HOVER }):Play()
 			end
 		end)
 		pill.MouseLeave:Connect(function()
-			if kbListening ~= id then
-				kbPaint(id)
+			if kbListening ~= def.id then
+				kbPaint(def.id)
 			end
 		end)
 		pill.Activated:Connect(function()
@@ -1600,71 +1416,20 @@ function UI.new(opts)
 			if os.clock() - kbLastBind < 0.2 then
 				return
 			end
-			kbAuto = nil
 			local prev = kbListening
-			if prev == id then
+			if prev == def.id then
 				kbListening = nil
 			else
-				kbListening = id
+				kbListening = def.id
 			end
 			if prev then
 				kbPaint(prev)
 			end
-			kbPaint(id)
+			kbPaint(def.id)
 		end)
 
-		if def.removable then
-			local xb = new("TextButton", {
-				Name = id .. "Remove",
-				AutoButtonColor = false,
-				Text = "",
-				AnchorPoint = Vector2.new(1, 0.5),
-				Size = UDim2.fromOffset(18, 18),
-				BackgroundColor3 = CALM_RED,
-				BackgroundTransparency = 1,
-				BorderSizePixel = 0,
-				ZIndex = 5,
-			}, kbList)
-			corner(xb, 5)
-			local xp = {}
-			for k = 1, 2 do
-				local rot = 45
-				if k == 2 then
-					rot = -45
-				end
-				local f = new("Frame", {
-					AnchorPoint = Vector2.new(0.5, 0.5),
-					Position = UDim2.fromScale(0.5, 0.5),
-					Size = UDim2.fromOffset(9, 2),
-					Rotation = rot,
-					BackgroundColor3 = DIM_TEXT,
-					BorderSizePixel = 0,
-					ZIndex = 6,
-				}, xb)
-				corner(f, 1)
-				xp[k] = f
-			end
-			xb.MouseEnter:Connect(function()
-				TweenService:Create(xb, FAST, { BackgroundTransparency = 0 }):Play()
-				for k = 1, 2 do
-					TweenService:Create(xp[k], FAST, { BackgroundColor3 = ICON_HOVER }):Play()
-				end
-			end)
-			xb.MouseLeave:Connect(function()
-				TweenService:Create(xb, FAST, { BackgroundTransparency = 1 }):Play()
-				for k = 1, 2 do
-					TweenService:Create(xp[k], FAST, { BackgroundColor3 = DIM_TEXT }):Play()
-				end
-			end)
-			xb.Activated:Connect(function()
-				if kbRemove then
-					kbRemove(id)
-				end
-			end)
-			row.x = xb
-		end
-
-		kbLayout()
+		kbEmpty.Visible = false
+		kbPanel.Size = UDim2.fromOffset(KB_W, KB_HEAD + #BINDS * KB_ROW + 12)
 	end
 
 	-- the next key / mouse button pressed becomes the bind
@@ -1687,9 +1452,6 @@ function UI.new(opts)
 				return
 			end
 		elseif t == Enum.UserInputType.MouseButton1 then
-			if kbAuto == id then
-				return   -- a stray click right after linking must not bind the left mouse button
-			end
 			newBind = { kind = "Mouse", n = 1 }
 		elseif t == Enum.UserInputType.MouseButton2 then
 			newBind = { kind = "Mouse", n = 2 }
@@ -1704,28 +1466,30 @@ function UI.new(opts)
 			binds[id] = newBind
 		end
 		kbListening = nil
-		kbAuto = nil
 		kbLastBind = os.clock()
 		kbPaint(id)
 	end))
 
 	---------------------------------------------------------------------
-	-- MODULE TOGGLES + LINKING
+	-- MODULE TOGGLES: every module you can turn on / off (Trigger Bot, Aimbot, ESP ...) shows up in the
+	-- keybinds panel with a status dot (grey = off, green = on). Its key flips it.
 	---------------------------------------------------------------------
+	local toggles = {}   -- [id] = { def = def, on = bool, listeners = { fn(on) } }
+
 	local function paintDot(id)
-		local r = rows[id]
-		if not r or not r.dot then
+		local d = kbDots[id]
+		if not d then
 			return
 		end
 		local c = DIM_TEXT
 		if toggles[id] and toggles[id].on then
 			c = ON_GREEN
 		end
-		TweenService:Create(r.dot, FAST, { BackgroundColor3 = c }):Play()
+		TweenService:Create(d, FAST, { BackgroundColor3 = c }):Play()
 	end
 
-	-- sets the state of a module. silent = true skips the toast.
-	setToggle = function(id, on, silent)
+	-- sets a toggle. silent = true skips the toast (used when the module's own switch changed it)
+	local function setToggle(id, on, silent)
 		local t = toggles[id]
 		if not t then
 			return
@@ -1751,129 +1515,9 @@ function UI.new(opts)
 		end
 	end
 
-	-- which signal of a switch button the module listens to (the module's own handler, not ours)
-	local SIGNALS = { "Activated", "MouseButton1Click", "MouseButton1Down" }
-	local function detectSignal(btn)
-		if type(getconnections) ~= "function" then
-			return "Activated"
-		end
-		for i = 1, #SIGNALS do
-			local ok, list = pcall(getconnections, btn[SIGNALS[i]])
-			if ok and type(list) == "table" and #list > 0 then
-				return SIGNALS[i]
-			end
-		end
-		return "Activated"
-	end
-
-	-- presses a linked switch for you (runs the module's own click handler)
-	local function fireButton(btn, signalName)
-		if not btn or not btn.Parent then
-			return false
-		end
-		local sig = btn[signalName]
-		if type(getconnections) == "function" then
-			local ok, list = pcall(getconnections, sig)
-			if ok and type(list) == "table" and #list > 0 then
-				for k = 1, #list do
-					pcall(function()
-						list[k]:Fire()
-					end)
-				end
-				return true
-			end
-		end
-		if type(firesignal) == "function" then
-			local ok = pcall(firesignal, sig)
-			return ok
-		end
-		return false
-	end
-
-	-- connects a row to a switch button of a module page
-	local function attachLink(id, btn)
-		local r = rows[id]
-		local t = toggles[id]
-		if not r or not t or r.link or typeof(btn) ~= "Instance" or not btn:IsA("GuiButton") then
-			return false
-		end
-		local link = { btn = btn, signal = detectSignal(btn), firing = false }
-		-- every real click on the switch (by you) moves the dot; clicks we make ourselves are ignored here
-		link.conn = btn.Activated:Connect(function()
-			if link.firing then
-				return
-			end
-			setToggle(id, not t.on, true)
-		end)
-		r.link = link
-		return true
-	end
-
-	-- flips a module: a linked one is pressed through its own switch, the others just change state
-	flipToggle = function(id, silent)
-		local t = toggles[id]
-		local r = rows[id]
-		if not t then
-			return
-		end
-		if r and r.link then
-			local link = r.link
-			if not link.btn or not link.btn.Parent then
-				win:Toast("That switch is gone - remove the row and link it again", 3)
-				return
-			end
-			link.firing = true
-			local ok = fireButton(link.btn, link.signal)
-			link.firing = false
-			if ok then
-				setToggle(id, not t.on, silent)
-			else
-				win:Toast("Could not press that switch (your executor needs firesignal or getconnections)", 3)
-			end
-			return
-		end
-		setToggle(id, not t.on, silent)
-	end
-
-	-- removes a row (and its link)
-	kbRemove = function(id)
-		local r = rows[id]
-		if not r then
-			return
-		end
-		local title = tostring(bindDef[id] and bindDef[id].title or id)
-		if r.link and r.link.conn then
-			pcall(function()
-				r.link.conn:Disconnect()
-			end)
-		end
-		if kbListening == id then
-			kbListening = nil
-		end
-		local objs = { r.dot, r.name, r.pill, r.x }
-		for i = 1, 4 do
-			if objs[i] then
-				pcall(function()
-					objs[i]:Destroy()
-				end)
-			end
-		end
-		for i = #BINDS, 1, -1 do
-			if BINDS[i].id == id then
-				table.remove(BINDS, i)
-			end
-		end
-		rows[id] = nil
-		bindDef[id] = nil
-		binds[id] = nil
-		toggles[id] = nil
-		kbLayout()
-		win:Toast("Removed " .. title, 1.5)
-	end
-
-	-- registers a module row. def = { id, title, default, enabled, wired, onToggle, removable, link = <GuiButton> }
+	-- registers a module: adds its keybind row (with the dot) and makes the key flip it
 	local function addToggle(def)
-		if type(def) ~= "table" or type(def.id) ~= "string" or toggles[def.id] or bindDef[def.id] then
+		if type(def) ~= "table" or type(def.id) ~= "string" or toggles[def.id] then
 			return
 		end
 		toggles[def.id] = { def = def, on = false, listeners = {} }
@@ -1883,237 +1527,70 @@ function UI.new(opts)
 			wired = (def.wired ~= false),
 			default = def.default,
 			toggle = true,
-			removable = def.removable,
 		})
-		if def.link then
-			attachLink(def.id, def.link)
-		end
 		if def.enabled then
 			setToggle(def.id, true, true)
 		end
 	end
 
-	-- the key / mouse button flips the module (not while typing in a box, rebinding or linking)
+	-- the key / mouse button flips the module (not while typing in a box, not while rebinding)
 	-- (connected after the rebinding handler above, so the key that finishes a rebind is ignored by the guard)
 	table.insert(conns, UserInputService.InputBegan:Connect(function(input, processed)
-		if processed or kbListening or linkMode or os.clock() - kbLastBind < 0.2 then
+		if processed or kbListening or os.clock() - kbLastBind < 0.2 then
 			return
 		end
-		for id, _ in pairs(toggles) do
+		for id, t in pairs(toggles) do
 			if bindMatches(id, input) then
-				flipToggle(id, false)
+				setToggle(id, not t.on)
 			end
 		end
 	end))
 
-	---------------------------------------------------------------------
-	-- LINK MODE: click a switch on any tab and it becomes a row
-	---------------------------------------------------------------------
-	local CHROME = {
-		Controls = true, Search = true, TabBar = true, Keybinds = true, Toast = true,
-		MiniButton = true, Watermark = true, TopBar = true, Outline = true,
-	}
-	-- the window's own buttons (tabs, top bar, this panel): never treated as a module switch
-	local function isChrome(obj)
-		local o = obj
-		while o and o ~= gui do
-			local par = o.Parent
-			if (par == window or par == gui) and CHROME[o.Name] then
-				return true
-			end
-			o = par
-		end
-		return false
-	end
-
-	local function btnShown(obj)
-		local o = obj
-		while o and o ~= gui do
-			if o:IsA("GuiObject") and not o.Visible then
-				return false
-			end
-			if o:IsA("CanvasGroup") and o.GroupTransparency >= 0.99 then
-				return false
-			end
-			o = o.Parent
-		end
-		return o == gui
-	end
-
-	local function kbPointer(input)
-		local inset = GuiService:GetGuiInset()
-		return Vector2.new(input.Position.X + inset.X, input.Position.Y + inset.Y)
-	end
-
-	-- the button under the pointer (top most, then the smallest). Second result: the click hit the window's own chrome.
-	local function findButtonAt(p)
-		local best = nil
-		local bestZ = -1e9
-		local bestArea = 1e18
-		local chromeHit = false
-		local list = gui:GetDescendants()
-		for i = 1, #list do
-			local o = list[i]
-			if o:IsA("GuiButton") and btnShown(o) then
-				local a = o.AbsolutePosition
-				local s = o.AbsoluteSize
-				if p.X >= a.X and p.X <= a.X + s.X and p.Y >= a.Y and p.Y <= a.Y + s.Y then
-					if isChrome(o) then
-						chromeHit = true
-					else
-						local area = s.X * s.Y
-						if o.ZIndex > bestZ or (o.ZIndex == bestZ and area < bestArea) then
-							best = o
-							bestZ = o.ZIndex
-							bestArea = area
-						end
-					end
-				end
-			end
-		end
-		return best, chromeHit
-	end
-
-	local function cleanText(s)
-		local t = tostring(s or "")
-		t = string.gsub(t, "<[^>]+>", "")
-		t = string.gsub(t, "^%s+", "")
-		t = string.gsub(t, "%s+$", "")
-		return t
-	end
-
-	-- the name written next to a switch (looks for a label on the same row, a few levels up)
-	local function guessTitle(btn)
-		local c = btn.AbsolutePosition.Y + btn.AbsoluteSize.Y / 2
-		local level = btn.Parent
-		local depth = 0
-		while level and level ~= card and level ~= gui and depth < 5 do
-			local best = nil
-			local bestD = 1e9
-			local kids = level:GetDescendants()
-			for i = 1, #kids do
-				local o = kids[i]
-				if o ~= btn and not o:IsDescendantOf(btn) and (o:IsA("TextLabel") or o:IsA("TextButton")) then
-					local t = cleanText(o.Text)
-					if #t >= 2 and #t <= 28 then
-						local d = math.abs(o.AbsolutePosition.Y + o.AbsoluteSize.Y / 2 - c)
-						if d < 22 and d < bestD then
-							best = t
-							bestD = d
-						end
-					end
-				end
-			end
-			if best then
-				return best
-			end
-			level = level.Parent
-			depth = depth + 1
-		end
-		if btn:IsA("TextButton") then
-			local own = cleanText(btn.Text)
-			if #own >= 2 then
-				return own
-			end
-		end
-		return nil
-	end
-
-	setLinkMode = function(on)
-		linkMode = on and true or false
-		if linkMode then
-			if kbListening then
-				local prev = kbListening
-				kbListening = nil
-				kbPaint(prev)
-			end
-			kbLinkBtn.Text = "Click a module's switch...  (Esc)"
-			TweenService:Create(kbLinkBtn, FAST, { BackgroundColor3 = CALM_RED, TextColor3 = Color3.new(1, 1, 1) }):Play()
-			TweenService:Create(kbLinkStroke, FAST, { Color = CALM_RED }):Play()
-		else
-			kbLinkBtn.Text = "+  Link a module"
-			TweenService:Create(kbLinkBtn, FAST, { BackgroundColor3 = WELL, TextColor3 = ICON }):Play()
-			TweenService:Create(kbLinkStroke, FAST, { Color = BORDER }):Play()
-		end
-	end
-
-	kbLinkBtn.Activated:Connect(function()
-		if linkMode then
-			setLinkMode(false)
-		else
-			setLinkMode(true)
-			win:Toast("Switch the module OFF, then click its switch (you can change tabs). Esc cancels.", 4)
-		end
-	end)
-
-	table.insert(conns, UserInputService.InputBegan:Connect(function(input)
-		if not linkMode then
-			return
-		end
-		local t = input.UserInputType
-		if t == Enum.UserInputType.Keyboard then
-			if input.KeyCode == Enum.KeyCode.Escape then
-				setLinkMode(false)
-			end
-			return
-		end
-		if t ~= Enum.UserInputType.MouseButton1 and t ~= Enum.UserInputType.Touch then
-			return
-		end
-		local btn, chromeHit = findButtonAt(kbPointer(input))
-		if not btn then
-			if not chromeHit then
-				win:Toast("No switch there - click a module's switch, or press Esc", 2)
-			end
-			return
-		end
-		for _, r in pairs(rows) do
-			if r.link and r.link.btn == btn then
-				win:Toast("That switch is already linked", 2)
-				setLinkMode(false)
-				return
-			end
-		end
-		linkCounter = linkCounter + 1
-		local title = guessTitle(btn) or ("Module " .. tostring(linkCounter))
-		local id = "link" .. tostring(linkCounter)
-		addToggle({ id = id, title = title, wired = true, removable = true, link = btn })
-		setLinkMode(false)
-		win:Toast(title .. " linked - now press the key you want", 3)
-		-- start listening for its key a moment later (so the linking click itself is not taken as the key)
-		task.delay(0.25, function()
-			if alive and rows[id] and not kbListening then
-				kbListening = id
-				kbAuto = id
-				kbPaint(id)
-			end
-		end)
-	end))
-
-	---------------------------------------------------------------------
-	-- DOCKING: the panel hangs on the left side of the main window and follows it
-	---------------------------------------------------------------------
+	-- starts to the left of the window (top edges level) and then stays where it is: it does NOT follow the window.
+	-- Drag it by its title bar to move it.
+	local kbAbs = Vector2.new(START_LEFT - (KB_W + 10), START_TOP)
+	local kbDragging = false
 	local function kbDock()
 		local vp = gui.AbsoluteSize
-		local wp = window.AbsolutePosition
-		local ws = window.AbsoluteSize
-		local ps = kbPanel.AbsoluteSize
-		if ps.X <= 0 then
-			ps = Vector2.new(KB_W * kbScale.Scale, ps.Y)
+		local ab = kbPanel.AbsoluteSize
+		if ab.X <= 0 then
+			ab = Vector2.new(KB_W, ab.Y)
 		end
-		local gap = 10
-		local x = wp.X - ps.X - gap
-		if x < 6 then
-			x = wp.X + ws.X + gap
-			if x + ps.X > vp.X - 6 then
-				x = math.max(6, wp.X - ps.X - gap)
-			end
-		end
-		local y = math.clamp(wp.Y, 6, math.max(6, vp.Y - ps.Y - 6))
+		local x = math.clamp(kbAbs.X, 6, math.max(6, vp.X - ab.X - 6))
+		local y = math.clamp(kbAbs.Y, 6, math.max(6, vp.Y - ab.Y - 6))
+		kbAbs = Vector2.new(x, y)
 		kbPanel.Position = UDim2.fromOffset(x, y)
 	end
 	table.insert(conns, RunService.RenderStepped:Connect(kbDock))
 	kbDock()
+
+	do
+		local dragStart = nil
+		local startOff = nil
+		kbHead.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.Touch then
+				kbDragging = true
+				dragStart = input.Position
+				startOff = kbAbs
+				input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then
+						kbDragging = false
+					end
+				end)
+			end
+		end)
+		table.insert(conns, UserInputService.InputChanged:Connect(function(input)
+			if not kbDragging then
+				return
+			end
+			if input.UserInputType == Enum.UserInputType.MouseMovement
+				or input.UserInputType == Enum.UserInputType.Touch then
+				local d = input.Position - dragStart
+				kbAbs = startOff + Vector2.new(d.X, d.Y)
+			end
+		end))
+	end
 
 	if type(opts.Binds) == "table" then
 		for i = 1, #opts.Binds do
@@ -2126,7 +1603,6 @@ function UI.new(opts)
 		end
 	end
 
-	kbLayout()
 	kbRefresh()
 
 	---------------------------------------------------------------------
@@ -2279,30 +1755,16 @@ function UI.new(opts)
 			return
 		end
 		alive = false
-		killBlur()
 		-- every module is switched off first, so nothing keeps running after the window is gone
 		for id, t in pairs(toggles) do
 			if t.on then
 				t.on = false
-				local r = rows[id]
-				if r and r.link then
-					r.link.firing = true
-					pcall(fireButton, r.link.btn, r.link.signal)
-					r.link.firing = false
-				end
 				if type(t.def.onToggle) == "function" then
 					pcall(t.def.onToggle, false)
 				end
 				for i = 1, #t.listeners do
 					pcall(t.listeners[i], false)
 				end
-			end
-		end
-		for _, r in pairs(rows) do
-			if r.link and r.link.conn then
-				pcall(function()
-					r.link.conn:Disconnect()
-				end)
 			end
 		end
 		for i = 1, #handles do
@@ -2353,29 +1815,28 @@ function UI.new(opts)
 			Position = UDim2.new(0, 12, 0.5, -MINI / 2),
 			Size = UDim2.fromOffset(MINI, MINI),
 			BackgroundColor3 = BG,
-			BackgroundTransparency = GLASS_T,
 			BorderSizePixel = 0,
 			Visible = false,
 			ZIndex = 5,
 		}, gui)
-		corner(mini, GLASS_R)
-		local miniStroke = glassStroke(mini, 1)
+		corner(mini, 10)
+		local miniStroke = stroke(mini, BORDER, 1, 0)
 		local miniScale = new("UIScale", { Scale = 0.6 }, mini)
 		new("TextLabel", {
 			BackgroundTransparency = 1,
 			Size = UDim2.fromScale(1, 1),
 			Font = Enum.Font.GothamBlack,
-			Text = "<font color=\"rgb(214,91,99)\">" .. string.sub(CONFIG.Logo, 1, -2) .. "</font>" .. string.sub(CONFIG.Logo, -1),
+			Text = "<font color=\"rgb(196,92,92)\">" .. string.sub(CONFIG.Logo, 1, -2) .. "</font>" .. string.sub(CONFIG.Logo, -1),
 			RichText = true,
 			TextSize = 20,
 			TextColor3 = Color3.new(1, 1, 1),
 			ZIndex = 6,
 		}, mini)
 		mini.MouseEnter:Connect(function()
-			glassLineTo(miniStroke, CALM_RED, 0)
+			TweenService:Create(miniStroke, FAST, { Color = CALM_RED }):Play()
 		end)
 		mini.MouseLeave:Connect(function()
-			glassLineTo(miniStroke, Color3.new(1, 1, 1), GLASS_LINE_T)
+			TweenService:Create(miniStroke, FAST, { Color = BORDER }):Play()
 		end)
 
 		local function miniShow(show)
@@ -2409,7 +1870,6 @@ function UI.new(opts)
 			minimized = true
 			hidden = false
 			kbSetSuppressed(true)
-			setBlur(false)
 			winToken = winToken + 1
 			local tk = winToken
 			TweenService:Create(windowScale, LEAVE, { Scale = baseScale() * 0.85 }):Play()
@@ -2433,7 +1893,6 @@ function UI.new(opts)
 			end
 			minimized = false
 			kbSetSuppressed(false)
-			setBlur(true)
 			winToken = winToken + 1
 			miniShow(false)
 			windowScale.Scale = baseScale() * 0.85
@@ -2477,7 +1936,6 @@ function UI.new(opts)
 			if not alive then
 				return
 			end
-			setBlur(false)
 			TweenService:Create(window, LEAVE, { GroupTransparency = 1 }):Play()
 			TweenService:Create(windowScale, LEAVE, { Scale = windowScale.Scale * 0.92 }):Play()
 			task.delay(LEAVE.Time + 0.03, unload)
@@ -2542,7 +2000,6 @@ function UI.new(opts)
 			end
 			hidden = hide
 			kbSetSuppressed(hide)
-			setBlur(not hide)
 			animToken = animToken + 1
 			local tk = animToken
 			if hide then
@@ -2657,13 +2114,13 @@ function UI.new(opts)
 			Size = UDim2.fromOffset(0, 68),
 			AutomaticSize = Enum.AutomaticSize.X,
 			BackgroundColor3 = BG,
-			BackgroundTransparency = GLASS_T,
+			BackgroundTransparency = 0.04,
 			BorderSizePixel = 0,
 			Active = true,
 			ZIndex = 50,
 		}, gui)
-		corner(wm, GLASS_R)
-		glassStroke(wm, 1)
+		corner(wm, 12)
+		stroke(wm, BORDER, 1, 0)
 		new("UIPadding", {
 			PaddingLeft = UDim.new(0, 14),
 			PaddingRight = UDim.new(0, 14),
@@ -2730,7 +2187,7 @@ function UI.new(opts)
 
 		local head = string.sub(CONFIG.Logo, 1, -2)
 		local tail = string.sub(CONFIG.Logo, -1)
-		item(rowTop, "<font color=\"rgb(214,91,99)\">" .. head .. "</font>" .. tail, Color3.new(1, 1, 1),
+		item(rowTop, "<font color=\"rgb(196,92,92)\">" .. head .. "</font>" .. tail, Color3.new(1, 1, 1),
 			Enum.Font.GothamBlack, 17, true)
 		divider(rowTop)
 		item(rowTop, shorten(accountName, 16), TEXT_COLOR, Enum.Font.GothamBold, 15, false)
@@ -2860,14 +2317,13 @@ function UI.new(opts)
 		Size = UDim2.fromOffset(0, 36),
 		AutomaticSize = Enum.AutomaticSize.X,
 		BackgroundColor3 = BG,
-		BackgroundTransparency = GLASS_T,
 		BorderSizePixel = 0,
 		GroupTransparency = 1,
 		Visible = false,
 		ZIndex = 80,
 	}, gui)
-	corner(toastGroup, GLASS_R)
-	glassStroke(toastGroup, 1)
+	corner(toastGroup, 10)
+	stroke(toastGroup, BORDER, 1, 0)
 	new("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16) }, toastGroup)
 	local toastText = new("TextLabel", {
 		BackgroundTransparency = 1,
@@ -2968,7 +2424,7 @@ function UI.new(opts)
 		return bindName(binds[id])
 	end
 
-	-- module toggles / linking (see the notes at the top of this file)
+	-- module toggles (see the notes at the top of this file)
 	function win:AddToggle(def)
 		addToggle(def)
 	end
@@ -2976,7 +2432,10 @@ function UI.new(opts)
 		setToggle(id, on, true)
 	end
 	function win:Toggle(id)
-		flipToggle(id, false)
+		local t = toggles[id]
+		if t then
+			setToggle(id, not t.on)
+		end
 	end
 	function win:GetToggle(id)
 		local t = toggles[id]
@@ -2987,16 +2446,6 @@ function UI.new(opts)
 		if t and type(fn) == "function" then
 			t.listeners[#t.listeners + 1] = fn
 		end
-	end
-	-- connects an existing row to a switch button of a module page (code version of the "Link a module" button)
-	function win:LinkToggle(id, button)
-		return attachLink(id, button)
-	end
-	-- starts link mode, same as pressing "+ Link a module"
-	function win:StartLink()
-		kbOpen = true
-		kbRefresh()
-		setLinkMode(true)
 	end
 
 	-- tells a tab's page that something went wrong (the message replaces the "will go here" text)
@@ -3068,7 +2517,6 @@ function UI.new(opts)
 	---------------------------------------------------------------------
 	TweenService:Create(window, SMOOTH, { GroupTransparency = 0 }):Play()
 	TweenService:Create(windowScale, POP, { Scale = fitScale }):Play()
-	setBlur(true)
 
 	return win
 end
