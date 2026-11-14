@@ -1,56 +1,77 @@
 -- hometab.lua  (Y1 Home tab content, separate module)
 -- ASCII only, conservative syntax (no += and no continue).
 --
--- Builds the Home screen INTO a frame (the Home tab of ui.lua). It does not make its own window.
+-- Builds the Home overview INTO a frame (the Home tab of ui.lua). It does not make its own window.
 --
--- Shows, centred on the page:
---   * a greeting that follows the time on this device:
---       05:00 - 11:59  "Good morning, <name>"
---       12:00 - 17:59  "Good afternoon, <name>"
---       18:00 - 04:59  "Good night, <name>"
---     <name> is the yur1 account name from the login (main.lua puts it in getgenv().Y1_SESSION.username).
---   * under it, in tiny and barely visible text:  detected game, <game name>
---   * at the TOP of the page:  "Key expires in, 3d 4h" (counts down live; "Lifetime key" for a lifetime key).
---     It reads key_expires_at / lifetime from getgenv().Y1_SESSION (the login answer).
+--   Good evening, <name>                                                         [Ready]
+--   Welcome back to Y1. Here's your overview.
 --
---   build(container, T, H, ctx)
---     container = the Body frame of the Home tab
---     T = theme table, H = helpers { new, corner, stroke, label }
---     ctx = a copy of opts.Home plus ctx.Win (the window), ctx.Theme and ctx.Helpers
---   It returns { Unload = fn }, which the window calls when it unloads.
+--   Account                      (icon)     Application                  (icon)
+--   <name>                                  Beta 0.6
+--   Lifetime membership                     Current build
+--
+--   Current session              (icon)
+--   <game name>
+--   Connected game - Session information
+--
+--   What's new                                                              [Beta 0.6]
+--   Latest Y1 announcements and release information will appear here.
+--
+-- * the greeting follows the time on this device: morning 05:00-11:59, afternoon 12:00-16:59,
+--   evening 17:00-20:59, night 21:00-04:59
+-- * <name> is the yur1 account name from the login (getgenv().Y1_SESSION.username)
+-- * membership: "Lifetime membership", or "Expires in 3d 4h" (live) for a timed key
+--   (reads lifetime / key_expires_at from getgenv().Y1_SESSION)
+-- * options (the Home table in main.lua is passed in as ctx):
+--     Build = "Beta 0.6"                       text of the Application card and the What's new badge
+--     WhatsNew = "..."                         text under What's new
+--
+--   build(container, T, H, ctx)  ->  { Unload = fn }
 
 local HomeTab = {}
 
 function HomeTab.build(container, T, H, ctx)
+	ctx = ctx or {}
 	local MarketplaceService = game:GetService("MarketplaceService")
-	local new = H.new
+	local new, corner, stroke = H.new, H.corner, H.stroke
 
 	local alive = true
+	local PAD = 16
+	local buildText = tostring(ctx.Build or "Beta 0.6")
+	local whatsNewText = tostring(ctx.WhatsNew or "Latest Y1 announcements and release information will appear here.")
+	local DOT = "\u{00B7}"
 
-	-- the account name from the login
-	local function accountName()
+	---------------------------------------------------------------------
+	-- DATA
+	---------------------------------------------------------------------
+	local function getSession()
 		local ok, genv = pcall(getgenv)
 		if ok and type(genv) == "table" and type(genv.Y1_SESSION) == "table" then
-			local n = genv.Y1_SESSION.username
-			if type(n) == "string" and n ~= "" then
-				return n
-			end
+			return genv.Y1_SESSION
 		end
 		return nil
 	end
 
-	-- the greeting word for the current hour on this device
+	local function accountName()
+		local s = getSession()
+		if s and type(s.username) == "string" and s.username ~= "" then
+			return s.username
+		end
+		return nil
+	end
+
 	local function greetingWord()
 		local hour = tonumber(os.date("%H")) or 12
 		if hour >= 5 and hour < 12 then
 			return "Good morning"
-		elseif hour >= 12 and hour < 18 then
+		elseif hour >= 12 and hour < 17 then
 			return "Good afternoon"
+		elseif hour >= 17 and hour < 21 then
+			return "Good evening"
 		end
 		return "Good night"
 	end
 
-	-- the name goes into rich text, so these characters must be escaped
 	local function escape(s)
 		s = string.gsub(s, "&", "&amp;")
 		s = string.gsub(s, "<", "&lt;")
@@ -98,125 +119,259 @@ function HomeTab.build(container, T, H, ctx)
 		return r .. "s"
 	end
 
-	-- the key expiry from the login: mode "lifetime", "timed" (target = the os.clock() moment it ends) or "none"
-	local keyMode = "none"
-	local keyTarget = 0
+	-- membership from the login: "lifetime", "timed" (target = the os.clock() moment it ends) or "none"
+	local memberMode = "none"
+	local memberTarget = 0
 	do
-		local ok, genv = pcall(getgenv)
-		if ok and type(genv) == "table" and type(genv.Y1_SESSION) == "table" then
-			local sess = genv.Y1_SESSION
-			if sess.lifetime == true then
-				keyMode = "lifetime"
-			elseif type(sess.key_expires_at) == "string" then
-				local left = secondsUntil(sess.key_expires_at)
+		local s = getSession()
+		if s then
+			if s.lifetime == true then
+				memberMode = "lifetime"
+			elseif type(s.key_expires_at) == "string" then
+				local left = secondsUntil(s.key_expires_at)
 				if left ~= nil then
-					keyMode = "timed"
-					keyTarget = os.clock() + left
+					memberMode = "timed"
+					memberTarget = os.clock() + left
 				end
 			end
 		end
 	end
 
+	---------------------------------------------------------------------
+	-- BUILDING BLOCKS
+	---------------------------------------------------------------------
+	local function text(parent, str, pos, size, font, textSize, color, align)
+		return new("TextLabel", {
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Position = pos,
+			Size = size,
+			Font = font,
+			Text = str,
+			TextSize = textSize,
+			TextColor3 = color,
+			TextXAlignment = align or Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+		}, parent)
+	end
+
+	-- small line icons (16 x 16, drawn with frames, in the icon colour)
+	local function iconPerson(h)
+		local head = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, 1),
+			Size = UDim2.fromOffset(6, 6),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, h)
+		corner(head, 100)
+		stroke(head, T.ICON, 1.5, 0)
+		local clip = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.new(0.5, 0, 1, 0),
+			Size = UDim2.fromOffset(13, 6),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			ClipsDescendants = true,
+		}, h)
+		local body = new("Frame", {
+			Size = UDim2.fromOffset(13, 13),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, clip)
+		corner(body, 100)
+		stroke(body, T.ICON, 1.5, 0)
+	end
+
+	local function iconWindow(h)
+		local box = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(13, 11),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, h)
+		corner(box, 3)
+		stroke(box, T.ICON, 1.5, 0)
+		local bar = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0.5, -2.5),
+			Size = UDim2.fromOffset(13, 1.5),
+			BackgroundColor3 = T.ICON,
+			BorderSizePixel = 0,
+		}, h)
+	end
+
+	local function iconClock(h)
+		local face = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(12, 12),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, h)
+		corner(face, 100)
+		stroke(face, T.ICON, 1.5, 0)
+		local up = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(1.5, 4),
+			BackgroundColor3 = T.ICON,
+			BorderSizePixel = 0,
+		}, h)
+		local right = new("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(3.5, 1.5),
+			BackgroundColor3 = T.ICON,
+			BorderSizePixel = 0,
+		}, h)
+	end
+
 	local root = new("Frame", {
 		Name = "HomeRoot",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.new(1, -40, 0, 74),
+		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 	}, container)
 
+	-- one block: bold title with an icon on the right, a big value, a small caption.
+	-- xs / xo / ws / wo place the column, y is the top. Returns the value and caption labels.
+	local function section(xs, xo, ws, wo, y, title, iconFn)
+		local f = new("Frame", {
+			Name = title,
+			Position = UDim2.new(xs, xo, 0, y),
+			Size = UDim2.new(ws, wo, 0, 72),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, root)
+		text(f, title, UDim2.fromOffset(0, 0), UDim2.new(1, -26, 0, 20), Enum.Font.GothamBold, 14, T.TEXT_COLOR)
+		local ico = new("Frame", {
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, 0, 0, 2),
+			Size = UDim2.fromOffset(16, 16),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, f)
+		iconFn(ico)
+		local value = text(f, "", UDim2.fromOffset(0, 26), UDim2.new(1, 0, 0, 26), Enum.Font.GothamBold, 19, T.TEXT_COLOR)
+		local cap = text(f, "", UDim2.fromOffset(0, 54), UDim2.new(1, 0, 0, 16), Enum.Font.GothamMedium, 12, T.ICON)
+		return value, cap
+	end
+
+	---------------------------------------------------------------------
+	-- HEADER: greeting, subtitle, Ready pill
+	---------------------------------------------------------------------
 	local greeting = new("TextLabel", {
 		Name = "Greeting",
-		Position = UDim2.fromOffset(0, 0),
-		Size = UDim2.new(1, 0, 0, 40),
 		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(PAD, 12),
+		Size = UDim2.new(1, -(PAD * 2 + 64), 0, 28),
 		Font = Enum.Font.GothamBold,
 		Text = "",
-		TextSize = 30,
+		TextSize = 22,
 		TextColor3 = T.TEXT_COLOR,
-		TextXAlignment = Enum.TextXAlignment.Center,
+		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		RichText = true,
 	}, root)
 
-	-- tiny, barely visible
-	local detected = new("TextLabel", {
-		Name = "DetectedGame",
-		Position = UDim2.fromOffset(0, 48),
-		Size = UDim2.new(1, 0, 0, 16),
+	text(root, "Welcome back to Y1. Here's your overview.", UDim2.fromOffset(PAD, 42), UDim2.new(1, -PAD * 2, 0, 16),
+		Enum.Font.GothamMedium, 11, T.ICON)
+
+	local pill = new("Frame", {
+		Name = "ReadyPill",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -PAD, 0, 16),
+		Size = UDim2.fromOffset(48, 20),
+		BackgroundColor3 = Color3.fromRGB(22, 40, 30),
+		BorderSizePixel = 0,
+	}, root)
+	corner(pill, 100)
+	stroke(pill, Color3.fromRGB(44, 96, 66), 1, 0)
+	text(pill, "Ready", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), Enum.Font.GothamBold, 11, T.GOOD,
+		Enum.TextXAlignment.Center)
+
+	---------------------------------------------------------------------
+	-- ROW 1: Account | Application
+	---------------------------------------------------------------------
+	local accValue, accCap = section(0, PAD, 0.5, -(PAD + 8), 84, "Account", iconPerson)
+	local appValue, appCap = section(0.5, 8, 0.5, -(PAD + 8), 84, "Application", iconWindow)
+
+	---------------------------------------------------------------------
+	-- ROW 2: Current session
+	---------------------------------------------------------------------
+	local sesValue, sesCap = section(0, PAD, 1, -PAD * 2, 172, "Current session", iconClock)
+
+	---------------------------------------------------------------------
+	-- ROW 3: What's new
+	---------------------------------------------------------------------
+	local newsY = 262
+	text(root, "What's new", UDim2.fromOffset(PAD, newsY), UDim2.new(1, -(PAD * 2 + 80), 0, 20), Enum.Font.GothamBold, 14,
+		T.TEXT_COLOR)
+	local badge = new("Frame", {
+		Name = "BuildBadge",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -PAD, 0, newsY + 1),
+		Size = UDim2.fromOffset(0, 18),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = T.POPUP_BG,
+		BorderSizePixel = 0,
+	}, root)
+	corner(badge, 100)
+	new("UIPadding", { PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 9) }, badge)
+	new("TextLabel", {
 		BackgroundTransparency = 1,
-		Font = Enum.Font.Gotham,
-		Text = "",
+		Size = UDim2.fromOffset(0, 18),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Font = Enum.Font.GothamBold,
+		Text = buildText,
 		TextSize = 10,
-		TextColor3 = T.DIM_TEXT,
-		TextTransparency = 0.55,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	}, root)
+		TextColor3 = T.TEXT_COLOR,
+	}, badge)
+	text(root, whatsNewText, UDim2.fromOffset(PAD, newsY + 28), UDim2.new(1, -PAD * 2, 0, 32), Enum.Font.GothamMedium, 12,
+		T.ICON).TextWrapped = true
 
-	-- TOP of the page: "Key expires in, <time>" (the label for the time is dim, the time itself is white)
-	local keyLine = new("TextLabel", {
-		Name = "KeyExpires",
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 6),
-		Size = UDim2.new(1, -40, 0, 18),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamMedium,
-		Text = "",
-		TextSize = 12,
-		TextColor3 = T.DIM_TEXT,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		RichText = true,
-		Visible = false,
-	}, container)
-
-	local lastKeyText = nil
-	local function paintKey()
-		local text = nil
-		if keyMode == "lifetime" then
-			text = "<font color=\"rgb(232,232,236)\">Lifetime key</font>"
-		elseif keyMode == "timed" then
-			local left = keyTarget - os.clock()
-			if left <= 0 then
-				text = "<font color=\"rgb(232,232,236)\">Key expired</font>"
-			else
-				text = "Key expires in, <font color=\"rgb(232,232,236)\">" .. formatLeft(left) .. "</font>"
-			end
-		end
-		if text == nil then
-			keyLine.Visible = false
-			return
-		end
-		keyLine.Visible = true
-		if text ~= lastKeyText then
-			lastKeyText = text
-			keyLine.Text = text
-		end
-	end
-	paintKey()
-
-	local lastText = nil
+	---------------------------------------------------------------------
+	-- FILL IN
+	---------------------------------------------------------------------
+	local lastGreeting = nil
 	local function paintGreeting()
 		local word = greetingWord()
 		local name = accountName()
-		local text = word
+		local t = word
 		if name then
-			-- the name is in the calm red accent colour
-			text = word .. ", <font color=\"rgb(196,92,92)\">" .. escape(name) .. "</font>"
+			t = word .. ", <font color=\"rgb(196,92,92)\">" .. escape(name) .. "</font>"
 		end
-		if text ~= lastText then
-			lastText = text
-			greeting.Text = text
+		if t ~= lastGreeting then
+			lastGreeting = t
+			greeting.Text = t
 		end
 	end
-	paintGreeting()
 
-	local function setGame(name)
-		detected.Text = "detected game, " .. tostring(name)
+	local function paintMember()
+		local t = "Member"
+		if memberMode == "lifetime" then
+			t = "Lifetime membership"
+		elseif memberMode == "timed" then
+			local left = memberTarget - os.clock()
+			if left <= 0 then
+				t = "Membership expired"
+			else
+				t = "Expires in " .. formatLeft(left)
+			end
+		end
+		accCap.Text = t
 	end
-	setGame(game.Name)
+
+	paintGreeting()
+	accValue.Text = accountName() or "Guest"
+	paintMember()
+	appValue.Text = buildText
+	appCap.Text = "Current build"
+	sesValue.Text = game.Name
+	sesCap.Text = "Connected game " .. DOT .. " Session information"
 
 	-- the real game name comes from the marketplace (in the background)
 	task.spawn(function()
@@ -224,28 +379,26 @@ function HomeTab.build(container, T, H, ctx)
 			return MarketplaceService:GetProductInfo(game.PlaceId)
 		end)
 		if ok and type(info) == "table" and type(info.Name) == "string" and info.Name ~= "" then
-			if alive and detected.Parent then
-				setGame(info.Name)
+			if alive and sesValue.Parent then
+				sesValue.Text = info.Name
 			end
 		end
 	end)
 
-	-- the greeting changes by itself when the time of day changes
+	-- the greeting follows the time of day, the membership counts down
 	task.spawn(function()
-		while alive do
-			task.wait(30)
-			if alive and greeting.Parent then
-				paintGreeting()
-			end
-		end
-	end)
-
-	-- the key countdown ticks every second
-	task.spawn(function()
+		local n = 0
 		while alive do
 			task.wait(1)
-			if alive and keyLine.Parent then
-				paintKey()
+			if not alive or not root.Parent then
+				return
+			end
+			n = n + 1
+			if memberMode == "timed" then
+				paintMember()
+			end
+			if n % 30 == 0 then
+				paintGreeting()
 			end
 		end
 	end)
@@ -256,7 +409,6 @@ function HomeTab.build(container, T, H, ctx)
 			alive = false
 			pcall(function()
 				root:Destroy()
-				keyLine:Destroy()
 			end)
 		end,
 	}
