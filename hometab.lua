@@ -3,7 +3,7 @@
 --
 -- Builds the Home overview INTO a frame (the Home tab of ui.lua). It does not make its own window.
 --
---   Good evening, <name>                                                         [Ready]
+--   Good evening, <name>
 --   Welcome back to Y1. Here's your overview.
 --
 --   Account                      (icon)     Application                  (icon)
@@ -15,7 +15,7 @@
 --   Connected game - Session information
 --
 --   What's new                                                              [Beta 0.6]
---   Latest Y1 announcements and release information will appear here.
+--   Yur1 is starting to get done..
 --
 -- * the greeting follows the time on this device: morning 05:00-11:59, afternoon 12:00-16:59,
 --   evening 17:00-20:59, night 21:00-04:59
@@ -38,7 +38,7 @@ function HomeTab.build(container, T, H, ctx)
 	local alive = true
 	local PAD = 16
 	local buildText = tostring(ctx.Build or "Beta 0.6")
-	local whatsNewText = tostring(ctx.WhatsNew or "Latest Y1 announcements and release information will appear here.")
+	local whatsNewText = tostring(ctx.WhatsNew or "Yur1 is starting to get done..")
 	local DOT = "\u{00B7}"
 
 	---------------------------------------------------------------------
@@ -260,14 +260,14 @@ function HomeTab.build(container, T, H, ctx)
 	end
 
 	---------------------------------------------------------------------
-	-- HEADER: greeting, subtitle, Ready pill
+	-- HEADER: greeting, subtitle
 	---------------------------------------------------------------------
 	local greeting = new("TextLabel", {
 		Name = "Greeting",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Position = UDim2.fromOffset(PAD, 12),
-		Size = UDim2.new(1, -(PAD * 2 + 64), 0, 28),
+		Size = UDim2.new(1, -PAD * 2, 0, 28),
 		Font = Enum.Font.GothamBold,
 		Text = "",
 		TextSize = 22,
@@ -279,19 +279,6 @@ function HomeTab.build(container, T, H, ctx)
 
 	text(root, "Welcome back to Y1. Here's your overview.", UDim2.fromOffset(PAD, 42), UDim2.new(1, -PAD * 2, 0, 16),
 		Enum.Font.GothamMedium, 11, T.ICON)
-
-	local pill = new("Frame", {
-		Name = "ReadyPill",
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -PAD, 0, 16),
-		Size = UDim2.fromOffset(48, 20),
-		BackgroundColor3 = Color3.fromRGB(22, 40, 30),
-		BorderSizePixel = 0,
-	}, root)
-	corner(pill, 100)
-	stroke(pill, Color3.fromRGB(44, 96, 66), 1, 0)
-	text(pill, "Ready", UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1), Enum.Font.GothamBold, 11, T.GOOD,
-		Enum.TextXAlignment.Center)
 
 	---------------------------------------------------------------------
 	-- ROW 1: Account | Application
