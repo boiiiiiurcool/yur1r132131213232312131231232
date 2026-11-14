@@ -43,6 +43,7 @@ function HomeTab.build(container, T, H, ctx)
 	ctx = ctx or {}
 	local MarketplaceService = game:GetService("MarketplaceService")
 	local TweenService = game:GetService("TweenService")
+	local TextService = game:GetService("TextService")
 	local new, corner, stroke = H.new, H.corner, H.stroke
 	local RADIUS = T.RADIUS
 
@@ -321,17 +322,33 @@ function HomeTab.build(container, T, H, ctx)
 	---------------------------------------------------------------------
 	-- HEADER: greeting, subtitle
 	---------------------------------------------------------------------
+	-- a hidden probe: its width tells how much the window is scaled (the window can be shrunk / maximized)
+	local probe = new("Frame", {
+		Position = UDim2.fromOffset(-300, -300),
+		Size = UDim2.fromOffset(100, 100),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+	}, root)
+
 	-- the maintenance notice on the RIGHT edge of the greeting row: a warning diamond with a "!" and the words
-	local NOTICE_W = 190   -- room reserved for it, so the greeting never runs underneath it
-	local reserve = 0
+	local notice = nil
+	local noticeLabel = nil
+	local noticeFull = 0   -- width of the whole notice (symbol + words) in pixels
 	if maintenance then
-		reserve = NOTICE_W
-		local notice = new("Frame", {
+		local okSize, sz = pcall(function()
+			return TextService:GetTextSize(maintenanceText, 14, Enum.Font.GothamBold, Vector2.new(1000, 28))
+		end)
+		local wordsW = #maintenanceText * 8
+		if okSize and sz then
+			wordsW = sz.X
+		end
+		noticeFull = 28 + 8 + wordsW + 2
+
+		notice = new("Frame", {
 			Name = "MaintenanceNotice",
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, -PAD, 0, 10),
-			Size = UDim2.fromOffset(0, 28),
-			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(noticeFull, 28),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 		}, root)
@@ -372,15 +389,15 @@ function HomeTab.build(container, T, H, ctx)
 			TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
 			{ Transparency = 0.65 }):Play()
 
-		new("TextLabel", {
+		noticeLabel = new("TextLabel", {
 			LayoutOrder = 2,
 			BackgroundTransparency = 1,
-			Size = UDim2.fromOffset(0, 28),
-			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(noticeFull - 36, 28),
 			Font = Enum.Font.GothamBold,
 			Text = maintenanceText,
 			TextSize = 14,
 			TextColor3 = T.TEXT_COLOR,
+			TextXAlignment = Enum.TextXAlignment.Left,
 		}, notice)
 	end
 
@@ -390,7 +407,7 @@ function HomeTab.build(container, T, H, ctx)
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Position = UDim2.fromOffset(PAD, 10),
-		Size = UDim2.new(1, -(PAD * 2 + reserve), 0, 28),
+		Size = UDim2.new(1, -PAD * 2, 0, 28),
 		Font = Enum.Font.GothamBold,
 		Text = "",
 		TextSize = 22,
@@ -399,6 +416,37 @@ function HomeTab.build(container, T, H, ctx)
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		RichText = true,
 	}, root)
+
+	-- keeps the greeting and the notice from ever covering each other:
+	-- enough room -> symbol + words on the right, the greeting gets the rest.
+	-- too narrow -> only the symbol stays (the words are hidden), so the greeting always keeps its space.
+	local function layoutHeader()
+		local scale = probe.AbsoluteSize.X / 100
+		if scale <= 0 then
+			scale = 1
+		end
+		local width = root.AbsoluteSize.X / scale
+		if width <= 0 then
+			return
+		end
+		local reserve = 0
+		if maintenance then
+			local roomIfFull = width - PAD * 2 - noticeFull - 14
+			if roomIfFull >= 190 then
+				noticeLabel.Visible = true
+				notice.Size = UDim2.fromOffset(noticeFull, 28)
+				reserve = noticeFull + 14
+			else
+				noticeLabel.Visible = false
+				notice.Size = UDim2.fromOffset(28, 28)
+				reserve = 28 + 14
+			end
+		end
+		greeting.Size = UDim2.new(1, -(PAD * 2 + reserve), 0, 28)
+	end
+	layoutHeader()
+	task.defer(layoutHeader)
+	root:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutHeader)
 
 	text(root, "Welcome back to Y1. Here's your overview.", UDim2.fromOffset(PAD, 38), UDim2.new(1, -PAD * 2, 0, 16),
 		Enum.Font.GothamMedium, 11, T.ICON)
