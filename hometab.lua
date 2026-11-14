@@ -42,8 +42,10 @@ function HomeTab.build(container, T, H, ctx)
 
 	local alive = true
 	local PAD = 16
-	local GAP = 10
-	local CARD_H = 80
+	local GAP = 12             -- space between the cards
+	local CARD_H = 76
+	local NEWS_H = 78          -- height of the What's new card
+	local BOTTOM_GAP = 18      -- empty space between the What's new card and the bottom of the page
 	local TILE = 40            -- the rounded square that holds an icon
 	local TILE_X = 14          -- its distance from the left edge of the card
 	local TEXT_X = TILE_X + TILE + 14   -- where the text column starts inside a card
@@ -246,10 +248,18 @@ function HomeTab.build(container, T, H, ctx)
 	}, container)
 
 	-- a plain card: dark fill, thin border, rounded corners
-	local function makeCard(name, xs, xo, ws, wo, y, h)
+	-- fromBottom = true: y is the gap above the bottom edge of the page and the card stands on it
+	local function makeCard(name, xs, xo, ws, wo, y, h, fromBottom)
+		local pos = UDim2.new(xs, xo, 0, y)
+		local anchor = Vector2.new(0, 0)
+		if fromBottom then
+			pos = UDim2.new(xs, xo, 1, -y)
+			anchor = Vector2.new(0, 1)
+		end
 		local c = new("Frame", {
 			Name = name,
-			Position = UDim2.new(xs, xo, 0, y),
+			AnchorPoint = anchor,
+			Position = pos,
 			Size = UDim2.new(ws, wo, 0, h),
 			BackgroundColor3 = T.SIDEBAR_BG,
 			BorderSizePixel = 0,
@@ -306,7 +316,7 @@ function HomeTab.build(container, T, H, ctx)
 		Name = "Greeting",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(PAD, 12),
+		Position = UDim2.fromOffset(PAD, 10),
 		Size = UDim2.new(1, -PAD * 2, 0, 28),
 		Font = Enum.Font.GothamBold,
 		Text = "",
@@ -317,13 +327,13 @@ function HomeTab.build(container, T, H, ctx)
 		RichText = true,
 	}, root)
 
-	text(root, "Welcome back to Y1. Here's your overview.", UDim2.fromOffset(PAD, 42), UDim2.new(1, -PAD * 2, 0, 16),
+	text(root, "Welcome back to Y1. Here's your overview.", UDim2.fromOffset(PAD, 38), UDim2.new(1, -PAD * 2, 0, 16),
 		Enum.Font.GothamMedium, 11, T.ICON)
 
 	---------------------------------------------------------------------
 	-- ROW 1: Account | Application   (two cards side by side, a small gap between them)
 	---------------------------------------------------------------------
-	local ROW1 = 72
+	local ROW1 = 62
 	local half = GAP / 2
 	local accValue, accCap = infoCard("Account", 0, PAD, 0.5, -(PAD + half), ROW1, iconPerson)
 	local appValue, appCap = infoCard("Application", 0.5, half, 0.5, -(PAD + half), ROW1, iconWindow)
@@ -337,8 +347,9 @@ function HomeTab.build(container, T, H, ctx)
 	---------------------------------------------------------------------
 	-- ROW 3: What's new (a card too, so the page reads as one set)
 	---------------------------------------------------------------------
-	local ROW3 = ROW2 + CARD_H + GAP
-	local news = makeCard("What's new", 0, PAD, 1, -PAD * 2, ROW3, 84)
+	-- it stands on the bottom of the page with BOTTOM_GAP of free space under it, so it never touches
+	-- the tab bar, whatever size the window is
+	local news = makeCard("What's new", 0, PAD, 1, -PAD * 2, BOTTOM_GAP, NEWS_H, true)
 	text(news, "What's new", UDim2.fromOffset(14, 11), UDim2.new(1, -110, 0, 20), Enum.Font.GothamBold, 14,
 		T.TEXT_COLOR)
 	local badge = new("Frame", {
