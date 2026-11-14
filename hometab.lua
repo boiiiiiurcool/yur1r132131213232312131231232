@@ -6,16 +6,20 @@
 --   Good evening, <name>
 --   Welcome back to Y1. Here's your overview.
 --
---   Account                      (icon)     Application                  (icon)
---   <name>                                  Beta 0.6
---   Lifetime membership                     Current build
+--   [ icon ]  Account                [ icon ]  Application
+--             <name>                           Beta 0.6
+--             Lifetime membership              Current build
 --
---   Current session              (icon)
---   <game name>
---   Connected game - Session information
+--   [ icon ]  Current session
+--             <game name>
+--             Connected game - Session information
 --
 --   What's new                                                              [Beta 0.6]
 --   Yur1 is starting to get done..
+--
+-- LOOK: every block is its own card (dark fill, thin border, rounded). Inside a card the icon sits in a
+-- small rounded tile on the LEFT, centred on the middle of the text block (title, value, caption), so the
+-- icon and its information read as one unit.
 --
 -- * the greeting follows the time on this device: morning 05:00-11:59, afternoon 12:00-16:59,
 --   evening 17:00-20:59, night 21:00-04:59
@@ -34,9 +38,15 @@ function HomeTab.build(container, T, H, ctx)
 	ctx = ctx or {}
 	local MarketplaceService = game:GetService("MarketplaceService")
 	local new, corner, stroke = H.new, H.corner, H.stroke
+	local RADIUS = T.RADIUS
 
 	local alive = true
 	local PAD = 16
+	local GAP = 10
+	local CARD_H = 80
+	local TILE = 40            -- the rounded square that holds an icon
+	local TILE_X = 14          -- its distance from the left edge of the card
+	local TEXT_X = TILE_X + TILE + 14   -- where the text column starts inside a card
 	local buildText = tostring(ctx.Build or "Beta 0.6")
 	local whatsNewText = tostring(ctx.WhatsNew or "Yur1 is starting to get done..")
 	local DOT = "\u{00B7}"
@@ -165,7 +175,7 @@ function HomeTab.build(container, T, H, ctx)
 			BorderSizePixel = 0,
 		}, h)
 		corner(head, 100)
-		stroke(head, T.ICON, 1.5, 0)
+		stroke(head, T.ICON_HOVER, 1.5, 0)
 		local clip = new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 1),
 			Position = UDim2.new(0.5, 0, 1, 0),
@@ -180,7 +190,7 @@ function HomeTab.build(container, T, H, ctx)
 			BorderSizePixel = 0,
 		}, clip)
 		corner(body, 100)
-		stroke(body, T.ICON, 1.5, 0)
+		stroke(body, T.ICON_HOVER, 1.5, 0)
 	end
 
 	local function iconWindow(h)
@@ -192,12 +202,12 @@ function HomeTab.build(container, T, H, ctx)
 			BorderSizePixel = 0,
 		}, h)
 		corner(box, 3)
-		stroke(box, T.ICON, 1.5, 0)
-		local bar = new("Frame", {
+		stroke(box, T.ICON_HOVER, 1.5, 0)
+		new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0),
 			Position = UDim2.new(0.5, 0, 0.5, -2.5),
 			Size = UDim2.fromOffset(13, 1.5),
-			BackgroundColor3 = T.ICON,
+			BackgroundColor3 = T.ICON_HOVER,
 			BorderSizePixel = 0,
 		}, h)
 	end
@@ -211,19 +221,19 @@ function HomeTab.build(container, T, H, ctx)
 			BorderSizePixel = 0,
 		}, h)
 		corner(face, 100)
-		stroke(face, T.ICON, 1.5, 0)
-		local up = new("Frame", {
+		stroke(face, T.ICON_HOVER, 1.5, 0)
+		new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 1),
 			Position = UDim2.fromScale(0.5, 0.5),
 			Size = UDim2.fromOffset(1.5, 4),
-			BackgroundColor3 = T.ICON,
+			BackgroundColor3 = T.ICON_HOVER,
 			BorderSizePixel = 0,
 		}, h)
-		local right = new("Frame", {
+		new("Frame", {
 			AnchorPoint = Vector2.new(0, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
 			Size = UDim2.fromOffset(3.5, 1.5),
-			BackgroundColor3 = T.ICON,
+			BackgroundColor3 = T.ICON_HOVER,
 			BorderSizePixel = 0,
 		}, h)
 	end
@@ -235,27 +245,57 @@ function HomeTab.build(container, T, H, ctx)
 		BorderSizePixel = 0,
 	}, container)
 
-	-- one block: bold title with an icon on the right, a big value, a small caption.
-	-- xs / xo / ws / wo place the column, y is the top. Returns the value and caption labels.
-	local function section(xs, xo, ws, wo, y, title, iconFn)
-		local f = new("Frame", {
-			Name = title,
+	-- a plain card: dark fill, thin border, rounded corners
+	local function makeCard(name, xs, xo, ws, wo, y, h)
+		local c = new("Frame", {
+			Name = name,
 			Position = UDim2.new(xs, xo, 0, y),
-			Size = UDim2.new(ws, wo, 0, 72),
-			BackgroundTransparency = 1,
+			Size = UDim2.new(ws, wo, 0, h),
+			BackgroundColor3 = T.SIDEBAR_BG,
 			BorderSizePixel = 0,
 		}, root)
-		text(f, title, UDim2.fromOffset(0, 0), UDim2.new(1, -26, 0, 20), Enum.Font.GothamBold, 14, T.TEXT_COLOR)
-		local ico = new("Frame", {
-			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, 0, 0, 2),
+		corner(c, RADIUS + 4)
+		stroke(c, T.BORDER, 1, 0)
+		return c
+	end
+
+	-- an information card: the icon tile on the left, centred on the text block
+	-- (title, value, caption) on the right. Returns the value label and the caption label.
+	local function infoCard(name, xs, xo, ws, wo, y, iconFn)
+		local c = makeCard(name, xs, xo, ws, wo, y, CARD_H)
+
+		-- icon tile, vertically centred in the card
+		local tile = new("Frame", {
+			Name = "IconTile",
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, TILE_X, 0.5, 0),
+			Size = UDim2.fromOffset(TILE, TILE),
+			BackgroundColor3 = T.CLUSTER_BG,
+			BorderSizePixel = 0,
+		}, c)
+		corner(tile, RADIUS + 4)
+		stroke(tile, T.BORDER, 1, 0)
+
+		-- the 16x16 icon is centred in the tile and scaled up a little so it fills it nicely
+		local holder = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
 			Size = UDim2.fromOffset(16, 16),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-		}, f)
-		iconFn(ico)
-		local value = text(f, "", UDim2.fromOffset(0, 26), UDim2.new(1, 0, 0, 26), Enum.Font.GothamBold, 19, T.TEXT_COLOR)
-		local cap = text(f, "", UDim2.fromOffset(0, 54), UDim2.new(1, 0, 0, 16), Enum.Font.GothamMedium, 12, T.ICON)
+		}, tile)
+		new("UIScale", { Scale = 1.25 }, holder)
+		iconFn(holder)
+
+		-- text column: three lines whose combined height is centred on the tile's middle (the card's middle)
+		--   title 16 + gap 2 + value 24 + gap 2 + caption 16 = 60  ->  starts 10px from the top of an 80px card
+		local top = (CARD_H - 60) / 2
+		text(c, name, UDim2.fromOffset(TEXT_X, top), UDim2.new(1, -(TEXT_X + 14), 0, 16),
+			Enum.Font.GothamMedium, 12, T.DIM_TEXT)
+		local value = text(c, "", UDim2.fromOffset(TEXT_X, top + 18), UDim2.new(1, -(TEXT_X + 14), 0, 24),
+			Enum.Font.GothamBold, 18, T.TEXT_COLOR)
+		local cap = text(c, "", UDim2.fromOffset(TEXT_X, top + 44), UDim2.new(1, -(TEXT_X + 14), 0, 16),
+			Enum.Font.GothamMedium, 12, T.ICON)
 		return value, cap
 	end
 
@@ -281,32 +321,37 @@ function HomeTab.build(container, T, H, ctx)
 		Enum.Font.GothamMedium, 11, T.ICON)
 
 	---------------------------------------------------------------------
-	-- ROW 1: Account | Application
+	-- ROW 1: Account | Application   (two cards side by side, a small gap between them)
 	---------------------------------------------------------------------
-	local accValue, accCap = section(0, PAD, 0.5, -(PAD + 8), 84, "Account", iconPerson)
-	local appValue, appCap = section(0.5, 8, 0.5, -(PAD + 8), 84, "Application", iconWindow)
+	local ROW1 = 72
+	local half = GAP / 2
+	local accValue, accCap = infoCard("Account", 0, PAD, 0.5, -(PAD + half), ROW1, iconPerson)
+	local appValue, appCap = infoCard("Application", 0.5, half, 0.5, -(PAD + half), ROW1, iconWindow)
 
 	---------------------------------------------------------------------
-	-- ROW 2: Current session
+	-- ROW 2: Current session (full width)
 	---------------------------------------------------------------------
-	local sesValue, sesCap = section(0, PAD, 1, -PAD * 2, 172, "Current session", iconClock)
+	local ROW2 = ROW1 + CARD_H + GAP
+	local sesValue, sesCap = infoCard("Current session", 0, PAD, 1, -PAD * 2, ROW2, iconClock)
 
 	---------------------------------------------------------------------
-	-- ROW 3: What's new
+	-- ROW 3: What's new (a card too, so the page reads as one set)
 	---------------------------------------------------------------------
-	local newsY = 262
-	text(root, "What's new", UDim2.fromOffset(PAD, newsY), UDim2.new(1, -(PAD * 2 + 80), 0, 20), Enum.Font.GothamBold, 14,
+	local ROW3 = ROW2 + CARD_H + GAP
+	local news = makeCard("What's new", 0, PAD, 1, -PAD * 2, ROW3, 84)
+	text(news, "What's new", UDim2.fromOffset(14, 11), UDim2.new(1, -110, 0, 20), Enum.Font.GothamBold, 14,
 		T.TEXT_COLOR)
 	local badge = new("Frame", {
 		Name = "BuildBadge",
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -PAD, 0, newsY + 1),
+		Position = UDim2.new(1, -14, 0, 13),
 		Size = UDim2.fromOffset(0, 18),
 		AutomaticSize = Enum.AutomaticSize.X,
-		BackgroundColor3 = T.POPUP_BG,
+		BackgroundColor3 = T.CLUSTER_BG,
 		BorderSizePixel = 0,
-	}, root)
+	}, news)
 	corner(badge, 100)
+	stroke(badge, T.BORDER, 1, 0)
 	new("UIPadding", { PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 9) }, badge)
 	new("TextLabel", {
 		BackgroundTransparency = 1,
@@ -317,7 +362,7 @@ function HomeTab.build(container, T, H, ctx)
 		TextSize = 10,
 		TextColor3 = T.TEXT_COLOR,
 	}, badge)
-	text(root, whatsNewText, UDim2.fromOffset(PAD, newsY + 28), UDim2.new(1, -PAD * 2, 0, 32), Enum.Font.GothamMedium, 12,
+	text(news, whatsNewText, UDim2.fromOffset(14, 38), UDim2.new(1, -28, 0, 36), Enum.Font.GothamMedium, 12,
 		T.ICON).TextWrapped = true
 
 	---------------------------------------------------------------------
