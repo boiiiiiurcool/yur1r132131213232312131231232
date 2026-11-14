@@ -17,6 +17,11 @@
 --   What's new                                                              [Beta 0.6]
 --   Yur1 is starting to get done..
 --
+-- MAINTENANCE: while ctx.Maintenance is not false (the default) the greeting line is replaced by an amber
+-- warning symbol (a diamond with a "!", it pulses softly) and the text "Under maintenance"
+-- (ctx.MaintenanceText changes the words). Set Maintenance = false in the Home table of main.lua to get the
+-- normal "Good afternoon, <name>" greeting back.
+--
 -- LOOK: every block is its own card (dark fill, thin border, rounded). Inside a card the icon sits in a
 -- small rounded tile on the LEFT, centred on the middle of the text block (title, value, caption), so the
 -- icon and its information read as one unit.
@@ -37,6 +42,7 @@ local HomeTab = {}
 function HomeTab.build(container, T, H, ctx)
 	ctx = ctx or {}
 	local MarketplaceService = game:GetService("MarketplaceService")
+	local TweenService = game:GetService("TweenService")
 	local new, corner, stroke = H.new, H.corner, H.stroke
 	local RADIUS = T.RADIUS
 
@@ -50,6 +56,9 @@ function HomeTab.build(container, T, H, ctx)
 	local TILE_X = 14          -- its distance from the left edge of the card
 	local TEXT_X = TILE_X + TILE + 14   -- where the text column starts inside a card
 	local buildText = tostring(ctx.Build or "Beta 0.6")
+	local maintenance = (ctx.Maintenance ~= false)
+	local maintenanceText = tostring(ctx.MaintenanceText or "Under maintenance")
+	local AMBER = Color3.fromRGB(224, 168, 80)
 	local whatsNewText = tostring(ctx.WhatsNew or "Yur1 is starting to get done..")
 	local DOT = "\u{00B7}"
 
@@ -312,12 +321,47 @@ function HomeTab.build(container, T, H, ctx)
 	---------------------------------------------------------------------
 	-- HEADER: greeting, subtitle
 	---------------------------------------------------------------------
+	-- the symbol in front of the text while the page is under maintenance: a warning diamond with a "!"
+	local greetX = PAD
+	if maintenance then
+		greetX = PAD + 36
+		local sym = new("Frame", {
+			Name = "MaintenanceSymbol",
+			Position = UDim2.fromOffset(PAD, 10),
+			Size = UDim2.fromOffset(28, 28),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, root)
+		local diamond = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(19, 19),
+			Rotation = 45,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, sym)
+		corner(diamond, 5)
+		local diamondStroke = stroke(diamond, AMBER, 2, 0)
+		new("TextLabel", {
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			Font = Enum.Font.GothamBlack,
+			Text = "!",
+			TextSize = 16,
+			TextColor3 = AMBER,
+		}, sym)
+		-- a slow soft pulse so it reads as a status, not as decoration
+		TweenService:Create(diamondStroke,
+			TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+			{ Transparency = 0.65 }):Play()
+	end
+
 	local greeting = new("TextLabel", {
 		Name = "Greeting",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(PAD, 10),
-		Size = UDim2.new(1, -PAD * 2, 0, 28),
+		Position = UDim2.fromOffset(greetX, 10),
+		Size = UDim2.new(1, -(greetX + PAD), 0, 28),
 		Font = Enum.Font.GothamBold,
 		Text = "",
 		TextSize = 22,
@@ -381,6 +425,10 @@ function HomeTab.build(container, T, H, ctx)
 	---------------------------------------------------------------------
 	local lastGreeting = nil
 	local function paintGreeting()
+		if maintenance then
+			greeting.Text = maintenanceText
+			return
+		end
 		local word = greetingWord()
 		local name = accountName()
 		local t = word
