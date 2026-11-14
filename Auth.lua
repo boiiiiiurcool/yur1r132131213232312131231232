@@ -11,7 +11,9 @@
 --                 HWID of that device is saved on the account; from then on only that device can log in.
 --   WELCOME page  Shown on load when this device already has a saved session (small, compact window).
 --                 "Welcome back, We remembered who you are" + the account info + Continue / Log out.
---                 Continue -> OnSuccess. Log out -> the saved session is deleted and the KEY page shows.
+--                 The "Key expires" row asks the server (POST <ApiUrl>expiry) and then counts down live,
+--                 for example "3d 4h left" or "Lifetime". Continue -> OnSuccess. Log out -> the saved
+--                 session is deleted and the KEY page shows.
 --
 -- ANTI TAMPERING
 --   1. The saved session file is signed. The signature covers token, username, expiry and HWID, so
@@ -28,8 +30,10 @@
 --   POST <ApiUrl>register   { key, username, password, hwid }
 --   POST <ApiUrl>login      { username, password, hwid }
 --   POST <ApiUrl>verify     { token, username, hwid }      (only when Verify = true)
+--   POST <ApiUrl>expiry     { token, hwid }                (the welcome page: how long the key still lasts)
 -- Every answer is JSON: { ok = true/false, message = "...", token = "...", username = "...", expires_at = "...", key = "..." }
--- (login and verify should send back key = the key the account was made with; the welcome page can show it)
+-- login and verify also send  key = the key the account was made with  and  key_expires_at = a date, or null for
+-- a lifetime key. expiry sends back  key, expires_at, seconds_left, lifetime, expired.
 --
 --   local auth = Auth.new({
 --       Name = "Y1Auth",
@@ -38,8 +42,8 @@
 --       SessionFile = "Y1Auth_session.json",                 -- optional, where the session is remembered
 --       Secret = "change-this-to-your-own-random-text",      -- optional, used to sign the session file
 --       Verify = true,                                       -- optional, on by default (false = skip the server check)
---       Endpoints = { verify = "https://..." },              -- optional, verify already defaults to yur1.lovable.app
---       OnSuccess = function(session, position) end,         -- session = { token, username, expires_at, hwid }
+--       Endpoints = { verify = "https://..." },              -- optional, verify / expiry already default to yur1.lovable.app
+--       OnSuccess = function(session, position) end,         -- session = { token, username, expires_at, key, key_expires_at, lifetime, hwid }
 --       OnClose = function() end,                            -- only fires if you call auth:Close(false) yourself
 --   })
 --   auth:Close(instant)
@@ -57,6 +61,7 @@ function Auth.new(opts)
 	-- optional: full URLs per endpoint, for when register / login do not share one base url
 	local EP = {
 		verify = "https://yur1.lovable.app/api/public/verify",
+		expiry = "https://yur1.lovable.app/api/public/expiry",
 	}
 	if type(opts.Endpoints) == "table" then
 		for k, v in pairs(opts.Endpoints) do
@@ -217,10 +222,17 @@ function Auth.new(opts)
 	-- REMEMBERED SESSION (saved in a signed file, never throws)
 	---------------------------------------------------------------------
 	-- a 64 bit keyed checksum (two 32 bit parts) over everything that matters in the session.
-	-- Change any character of token, username, expiry or HWID and the signature no longer matches.
+	-- Change any character of token, username, expiry, HWID or key expiry and the signature no longer matches.
+	-- (the key expiry parts are only added when they exist, so session files from older versions still verify)
 	local function sign(s)
 		local str = tostring(s.token) .. "|" .. tostring(s.username) .. "|" .. tostring(s.expires_at)
 			.. "|" .. tostring(s.hwid) .. "|" .. tostring(s.key) .. "|" .. SECRET
+		if s.key_expires_at ~= nil then
+			str = str .. "|ke" .. tostring(s.key_expires_at)
+		end
+		if s.lifetime ~= nil then
+			str = str .. "|lt" .. tostring(s.lifetime)
+		end
 		local h1 = 5381
 		local h2 = 52711
 		for i = 1, #str do
@@ -241,6 +253,8 @@ function Auth.new(opts)
 					hwid = session.hwid,
 				}
 				out.key = session.key
+				out.key_expires_at = session.key_expires_at
+				out.lifetime = session.lifetime
 				out.sig = sign(out)
 				writefile(SESSION_FILE, HttpService:JSONEncode(out))
 			end
@@ -255,14 +269,14 @@ function Auth.new(opts)
 		end)
 	end
 
-	-- true when an ISO date like 2026-12-01T10:00:00Z is in the past (unreadable dates count as not expired)
-	local function isExpired(stamp)
+	-- how many seconds until an ISO date like 2026-12-01T10:00:00Z (negative = already past), nil if unreadable
+	local function secondsUntil(stamp)
 		if type(stamp) ~= "string" then
-			return false
+			return nil
 		end
 		local y, mo, d, h, mi, s = string.match(stamp, "(%d+)-(%d+)-(%d+)[T ](%d+):(%d+):(%d+)")
 		if y == nil then
-			return false
+			return nil
 		end
 		local ok, res = pcall(function()
 			local t = os.time({
@@ -270,42 +284,46 @@ function Auth.new(opts)
 				hour = tonumber(h), min = tonumber(mi), sec = tonumber(s),
 			})
 			local off = os.time(os.date("*t")) - os.time(os.date("!*t"))
-			return (t + off) < os.time()
-		end)
-		if ok then
-			return res
-		end
-		return false
-	end
-
-	-- turns 2026-12-01T10:00:00Z into "2026-12-01 10:00 UTC (23d left)"
-	local function describeExpiry(stamp)
-		if type(stamp) ~= "string" or stamp == "" then
-			return "No expiry"
-		end
-		local y, mo, d, h, mi, s = string.match(stamp, "(%d+)-(%d+)-(%d+)[T ](%d+):(%d+):(%d+)")
-		if y == nil then
-			return stamp
-		end
-		local text = y .. "-" .. mo .. "-" .. d .. " " .. h .. ":" .. mi .. " UTC"
-		local ok, left = pcall(function()
-			local t = os.time({
-				year = tonumber(y), month = tonumber(mo), day = tonumber(d),
-				hour = tonumber(h), min = tonumber(mi), sec = tonumber(s),
-			})
-			local off = os.time(os.date("*t")) - os.time(os.date("!*t"))
 			return (t + off) - os.time()
 		end)
-		if ok and type(left) == "number" and left > 0 then
-			if left >= 86400 then
-				text = text .. " (" .. math.floor(left / 86400) .. "d left)"
-			elseif left >= 3600 then
-				text = text .. " (" .. math.floor(left / 3600) .. "h left)"
-			else
-				text = text .. " (" .. math.max(1, math.floor(left / 60)) .. "m left)"
-			end
+		if ok and type(res) == "number" then
+			return res
 		end
-		return text
+		return nil
+	end
+
+	-- true when an ISO date is in the past (unreadable dates count as not expired)
+	local function isExpired(stamp)
+		local left = secondsUntil(stamp)
+		if left == nil then
+			return false
+		end
+		return left < 0
+	end
+
+	-- 273600 -> "3d 4h left", 15120 -> "4h 12m left", 725 -> "12m 5s left"
+	local function formatLeft(sec)
+		sec = math.floor(sec)
+		local d = math.floor(sec / 86400)
+		local h = math.floor((sec % 86400) / 3600)
+		local m = math.floor((sec % 3600) / 60)
+		local s = sec % 60
+		if d > 0 then
+			return d .. "d " .. h .. "h left"
+		elseif h > 0 then
+			return h .. "h " .. m .. "m left"
+		elseif m > 0 then
+			return m .. "m " .. s .. "s left"
+		end
+		return s .. "s left"
+	end
+
+	-- the server sends key_expires_at = null for a lifetime key (a missing date means lifetime)
+	local function lifetimeOf(res)
+		if type(res.lifetime) == "boolean" then
+			return res.lifetime
+		end
+		return res.key_expires_at == nil
 	end
 
 	-- returns the saved session when it is genuine and still good, else nil (and removes a bad file)
@@ -832,7 +850,7 @@ function Auth.new(opts)
 		return val
 	end
 	local infoUser = infoRow(8, "Username")
-	local infoExpires = infoRow(31, "Session ends")
+	local infoExpires = infoRow(31, "Key expires")
 	-- the key: shown as stars until Show is pressed
 	local keyCap = label(infoCard, "KEY", UDim2.fromOffset(14, 54), UDim2.new(0.3, -14, 0, 22),
 		Enum.Font.GothamMedium, 10, DIM_TEXT)
@@ -885,6 +903,46 @@ function Auth.new(opts)
 		paintKey()
 	end)
 
+	-- the "Key expires" row. mode: "none" (unknown), "checking" (asking the server), "lifetime", "timed"
+	-- A timed key counts down live: target is the os.clock() moment it ends.
+	local expiry = { mode = "none", target = 0 }
+
+	local function paintExpiry()
+		if expiry.mode == "checking" then
+			infoExpires.Text = "Checking..."
+			infoExpires.TextColor3 = DIM_TEXT
+		elseif expiry.mode == "lifetime" then
+			infoExpires.Text = "Lifetime"
+			infoExpires.TextColor3 = GOOD
+		elseif expiry.mode == "timed" then
+			local left = expiry.target - os.clock()
+			if left <= 0 then
+				infoExpires.Text = "Expired"
+				infoExpires.TextColor3 = BAD
+			else
+				infoExpires.Text = formatLeft(left)
+				infoExpires.TextColor3 = TEXT_COLOR
+			end
+		else
+			infoExpires.Text = "Not available"
+			infoExpires.TextColor3 = DIM_TEXT
+		end
+	end
+
+	-- takes what the session already knows (from login / verify / the saved file)
+	local function expiryFromSession(session)
+		expiry.mode = "none"
+		if session.lifetime == true then
+			expiry.mode = "lifetime"
+		elseif type(session.key_expires_at) == "string" then
+			local left = secondsUntil(session.key_expires_at)
+			if left ~= nil then
+				expiry.mode = "timed"
+				expiry.target = os.clock() + left
+			end
+		end
+	end
+
 	local wContinue = makeButton(welcomePage, 98, "Continue", "L", false, 38)
 	local wLogout = makeButton(welcomePage, 98, "Log out", "R", true, 38)
 
@@ -934,6 +992,57 @@ function Auth.new(opts)
 		paintTabs(animate)
 	end
 
+	-- asks the server how long the key still lasts and updates the row (and the saved file)
+	local function fetchExpiry(session)
+		task.spawn(function()
+			local res = post("expiry", { token = session.token, hwid = session.hwid })
+			if not alive or current ~= session or page ~= "welcome" then
+				return
+			end
+			local got = false
+			if res.ok ~= false then
+				if res.lifetime == true then
+					expiry.mode = "lifetime"
+					session.lifetime = true
+					session.key_expires_at = nil
+					got = true
+				elseif type(res.seconds_left) == "number" then
+					expiry.mode = "timed"
+					expiry.target = os.clock() + res.seconds_left
+					session.lifetime = false
+					if type(res.expires_at) == "string" then
+						session.key_expires_at = res.expires_at
+					end
+					got = true
+				elseif res.expired == true then
+					expiry.mode = "timed"
+					expiry.target = os.clock() - 1
+					session.lifetime = false
+					got = true
+				elseif type(res.expires_at) == "string" then
+					local left = secondsUntil(res.expires_at)
+					if left ~= nil then
+						expiry.mode = "timed"
+						expiry.target = os.clock() + left
+						session.lifetime = false
+						session.key_expires_at = res.expires_at
+						got = true
+					end
+				end
+				if type(res.key) == "string" and res.key ~= "" then
+					session.key = res.key
+					paintKey()
+				end
+			end
+			if got then
+				saveSession(session)
+			elseif expiry.mode == "checking" then
+				expiry.mode = "none"
+			end
+			paintExpiry()
+		end)
+	end
+
 	local function showWelcome(session, animate)
 		current = session
 		page = "welcome"
@@ -948,9 +1057,16 @@ function Auth.new(opts)
 		statusLine.Position = UDim2.fromOffset(0, 142)
 
 		infoUser.Text = tostring(session.username)
-		infoExpires.Text = describeExpiry(session.expires_at)
 		keyShown = false
 		paintKey()
+
+		-- show what we already know, then ask the server for the exact time left
+		expiryFromSession(session)
+		if expiry.mode == "none" then
+			expiry.mode = "checking"
+		end
+		paintExpiry()
+		fetchExpiry(session)
 	end
 
 	showPage("key", false)
@@ -1075,6 +1191,8 @@ function Auth.new(opts)
 					username = res.username or user,
 					key = res.key,
 					expires_at = res.expires_at,
+					key_expires_at = res.key_expires_at,
+					lifetime = lifetimeOf(res),
 					hwid = hwid,
 				}
 				saveSession(session)
@@ -1091,6 +1209,7 @@ function Auth.new(opts)
 	local function dropToStart(message, good)
 		clearSession()
 		current = nil
+		expiry.mode = "none"
 		lPass.clear()
 		lUser.clear()
 		showPage("key", true)
@@ -1122,6 +1241,8 @@ function Auth.new(opts)
 					username = res.username or sess.username,
 					key = res.key or sess.key,
 					expires_at = res.expires_at or sess.expires_at,
+					key_expires_at = res.key_expires_at,
+					lifetime = lifetimeOf(res),
 					hwid = sess.hwid,
 				}
 				saveSession(checked)
@@ -1179,6 +1300,16 @@ function Auth.new(opts)
 			end)
 		end
 	end
+
+	-- the "Key expires" row counts down live while the welcome page is open
+	task.spawn(function()
+		while alive do
+			if page == "welcome" and not finished and expiry.mode == "timed" then
+				paintExpiry()
+			end
+			task.wait(1)
+		end
+	end)
 
 	-- a genuine saved session on this device: open on the small welcome page instead of the key page
 	local saved, why = loadSession()
