@@ -17,10 +17,10 @@
 --   What's new                                                              [Beta 0.6]
 --   Yur1 is starting to get done..
 --
--- MAINTENANCE: while ctx.Maintenance is not false (the default) the greeting line is replaced by an amber
--- warning symbol (a diamond with a "!", it pulses softly) and the text "Under maintenance"
--- (ctx.MaintenanceText changes the words). Set Maintenance = false in the Home table of main.lua to get the
--- normal "Good afternoon, <name>" greeting back.
+-- MAINTENANCE: while ctx.Maintenance is not false (the default) the right edge of the greeting row shows an
+-- amber warning symbol (a diamond with a "!", it pulses softly) and the text "Under maintenance"
+-- (ctx.MaintenanceText changes the words). The greeting stays on the left. Set Maintenance = false in the
+-- Home table of main.lua to hide the maintenance notice.
 --
 -- LOOK: every block is its own card (dark fill, thin border, rounded). Inside a card the icon sits in a
 -- small rounded tile on the LEFT, centred on the middle of the text block (title, value, caption), so the
@@ -321,17 +321,34 @@ function HomeTab.build(container, T, H, ctx)
 	---------------------------------------------------------------------
 	-- HEADER: greeting, subtitle
 	---------------------------------------------------------------------
-	-- the symbol in front of the text while the page is under maintenance: a warning diamond with a "!"
-	local greetX = PAD
+	-- the maintenance notice on the RIGHT edge of the greeting row: a warning diamond with a "!" and the words
+	local NOTICE_W = 190   -- room reserved for it, so the greeting never runs underneath it
+	local reserve = 0
 	if maintenance then
-		greetX = PAD + 36
-		local sym = new("Frame", {
-			Name = "MaintenanceSymbol",
-			Position = UDim2.fromOffset(PAD, 10),
-			Size = UDim2.fromOffset(28, 28),
+		reserve = NOTICE_W
+		local notice = new("Frame", {
+			Name = "MaintenanceNotice",
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -PAD, 0, 10),
+			Size = UDim2.fromOffset(0, 28),
+			AutomaticSize = Enum.AutomaticSize.X,
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 		}, root)
+		new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Right,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 8),
+		}, notice)
+
+		local sym = new("Frame", {
+			LayoutOrder = 1,
+			Size = UDim2.fromOffset(28, 28),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, notice)
 		local diamond = new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
@@ -354,14 +371,26 @@ function HomeTab.build(container, T, H, ctx)
 		TweenService:Create(diamondStroke,
 			TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
 			{ Transparency = 0.65 }):Play()
+
+		new("TextLabel", {
+			LayoutOrder = 2,
+			BackgroundTransparency = 1,
+			Size = UDim2.fromOffset(0, 28),
+			AutomaticSize = Enum.AutomaticSize.X,
+			Font = Enum.Font.GothamBold,
+			Text = maintenanceText,
+			TextSize = 14,
+			TextColor3 = T.TEXT_COLOR,
+		}, notice)
 	end
 
+	-- the greeting, on the left like before
 	local greeting = new("TextLabel", {
 		Name = "Greeting",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(greetX, 10),
-		Size = UDim2.new(1, -(greetX + PAD), 0, 28),
+		Position = UDim2.fromOffset(PAD, 10),
+		Size = UDim2.new(1, -(PAD * 2 + reserve), 0, 28),
 		Font = Enum.Font.GothamBold,
 		Text = "",
 		TextSize = 22,
@@ -425,10 +454,6 @@ function HomeTab.build(container, T, H, ctx)
 	---------------------------------------------------------------------
 	local lastGreeting = nil
 	local function paintGreeting()
-		if maintenance then
-			greeting.Text = maintenanceText
-			return
-		end
 		local word = greetingWord()
 		local name = accountName()
 		local t = word
