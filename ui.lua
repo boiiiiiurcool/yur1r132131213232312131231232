@@ -22,8 +22,8 @@
 --   * finder.lua goes on the Server tab:  win:GetPage("Server")  (also win.MainPage)
 --
 -- LOOK: DARK FROSTED GLASS (the charcoal theme stays dominant, only the big floating surfaces are glass)
---   window / keybinds panel / watermark / toast: #171719 at 78% opacity, white outline at 8%, 9px corners,
---   soft shadow at 20%. Panels (tab bar, content card) are solid #202023, cards inside the pages are solid #29292D,
+--   window / keybinds panel / watermark / toast: #171719 at 78% opacity, white outline at 8%, 9px corners.
+--   Panels (tab bar, content card) are solid #202023, cards inside the pages are solid #29292D,
 --   accent #D65B63, secondary text #A1A1AA.
 --   Blur: Roblox cannot blur "behind one UI element", so the frosted effect is a BlurEffect (14px by default) on
 --   the game view while the main window is open. It fades out when the window is hidden / minimized / closed.
@@ -114,7 +114,6 @@ function UI.new(opts)
 	local GLASS_T      = 0.22   -- glass surfaces are 78% opaque
 	local GLASS_LINE_T = 0.92   -- glass outline: white at 8%
 	local GLASS_R      = 9      -- corner radius of the glass surfaces
-	local SHADOW_OP    = 0.2    -- shadow opacity
 
 	local RADIUS = 4
 
@@ -616,65 +615,6 @@ function UI.new(opts)
 		end
 	end
 
-	---------------------------------------------------------------------
-	-- SHADOW: a soft dark halo under a glass surface (SHADOW_OP at the edge, three stacked layers).
-	-- It follows its target every frame (position, size, fade, visibility).
-	---------------------------------------------------------------------
-	local shadows = {}
-	local SHADOW_LAYER = 1 - (1 - SHADOW_OP) ^ (1 / 3)
-
-	local function addShadow(target, radius)
-		local z = math.max(0, target.ZIndex - 1)
-		local holder = new("Frame", {
-			Name = "Shadow",
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			ZIndex = z,
-			Visible = false,
-		}, gui)
-		local layers = {}
-		local spread = { 4, 10, 18 }
-		for i = 1, #spread do
-			local f = new("Frame", {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(0.5, 0, 0.5, 3),   -- a touch lower than the surface
-				Size = UDim2.new(1, spread[i] * 2, 1, spread[i] * 2),
-				BackgroundColor3 = Color3.new(0, 0, 0),
-				BackgroundTransparency = 1,
-				BorderSizePixel = 0,
-				ZIndex = z,
-			}, holder)
-			corner(f, radius + spread[i])
-			layers[i] = f
-		end
-		shadows[#shadows + 1] = { target = target, holder = holder, layers = layers }
-	end
-
-	table.insert(conns, RunService.RenderStepped:Connect(function()
-		for i = 1, #shadows do
-			local sh = shadows[i]
-			local t = sh.target
-			if t.Parent then
-				local f = 1
-				if t:IsA("CanvasGroup") then
-					f = 1 - t.GroupTransparency
-				end
-				local show = t.Visible and f > 0.02
-				sh.holder.Visible = show
-				if show then
-					sh.holder.Position = UDim2.fromOffset(t.AbsolutePosition.X, t.AbsolutePosition.Y)
-					sh.holder.Size = UDim2.fromOffset(t.AbsoluteSize.X, t.AbsoluteSize.Y)
-					local tr = 1 - SHADOW_LAYER * f
-					for k = 1, #sh.layers do
-						sh.layers[k].BackgroundTransparency = tr
-					end
-				end
-			else
-				sh.holder.Visible = false
-			end
-		end
-	end))
-
 	-- where the window starts: a little right of the middle, so the keybinds panel fits on its left
 	local START_POS = UDim2.new(0.5, 132, 0.5, 0)
 	if typeof(opts.Position) == "UDim2" then
@@ -719,7 +659,6 @@ function UI.new(opts)
 		GroupTransparency = 1,
 	}, gui)
 	corner(window, GLASS_R)
-	addShadow(window, GLASS_R)
 	local windowScale = new("UIScale", { Scale = fitScale * 0.92 }, window)
 
 	do
@@ -1339,7 +1278,6 @@ function UI.new(opts)
 		Visible = false,
 	}, gui)
 	corner(kbPanel, GLASS_R)
-	addShadow(kbPanel, GLASS_R)
 	local kbScale = new("UIScale", { Scale = fitScale * 0.92 }, kbPanel)
 	do
 		local outline = new("Frame", {
@@ -2726,7 +2664,6 @@ function UI.new(opts)
 		}, gui)
 		corner(wm, GLASS_R)
 		glassStroke(wm, 1)
-		addShadow(wm, GLASS_R)
 		new("UIPadding", {
 			PaddingLeft = UDim.new(0, 14),
 			PaddingRight = UDim.new(0, 14),
@@ -2931,7 +2868,6 @@ function UI.new(opts)
 	}, gui)
 	corner(toastGroup, GLASS_R)
 	glassStroke(toastGroup, 1)
-	addShadow(toastGroup, GLASS_R)
 	new("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16) }, toastGroup)
 	local toastText = new("TextLabel", {
 		BackgroundTransparency = 1,
