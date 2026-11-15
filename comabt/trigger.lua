@@ -2,19 +2,22 @@
 -- ASCII only, conservative syntax (no += and no continue).
 --
 -- Loaded by main.lua, built by combat/aimbot.lua into its "Triggerbot" side:   Trigger.build(container, T, H, ctx)
--- The engine (createTriggerbot, your pasted code) is unchanged. Around it is a page built like misc1.lua:
---   three panels with a title bar and a red line, every option is a section: name + switch on top, and one inset box
---   with its settings (Keybind, Mode, drop-downs, sliders with a red bar).
+-- The engine (createTriggerbot) is the same as before, plus two small hooks for the visualizer. Around it is a page
+-- built like misc1.lua: three panels with a title bar and a red line, every option is a section: name + switch on top,
+-- and one inset box with its settings (Keybind, Mode, drop-downs, sliders with a red bar).
 --
 --   Triggerbot panel : Triggerbot (switch, Keybind, Mode, Fire Method, Hit Part, Crosshair), Require Tool, Delay, Random Delay
 --   Checks panel     : Team Check, Forcefield Check, Health Check (Min Health), Knocked Check, Distance (Min / Max)
---   Tuning panel     : Auto Lead (Lead, Max Lead), Detection (Hitbox, Rings, Ring Rays, Los Rays, Max Candidates)
+--   Tuning panel     : Visualizer (preview + on-screen overlay), Auto Lead (Lead, Max Lead),
+--                      Detection (Hitbox, Rings, Ring Rays, Los Rays, Max Candidates)
 --
+-- VISUALIZER: the section has a preview box (crosshair, hitbox circle, ring-ray dots, target markers) that follows the
+--   Hitbox / Rings / Ring Rays sliders live. Its switch draws the same thing around your real crosshair on screen.
+--   Red = a hit (circle + targets) or the ring stage hit (dots). Off each time the script starts.
 -- The switch of every section is OFF each time the script starts (the Triggerbot switch too). Mode:
 --   Always = armed while the switch is on     Toggle = the keybind arms / disarms it     Hold = armed only while the key is held
 -- KEYBINDS PANEL: while the triggerbot is armed it shows there ("Triggerbot" + its key).
--- SEARCH: every section is registered with the window's search box (ctx.Win:AddSearch). Find switches to the Combat tab,
---   opens Triggerbot, scrolls to the section and flashes its box.
+-- SEARCH: every section is registered with the window's search box (ctx.Win:AddSearch).
 -- ctx.SwitcherSpace = height the "Aimbot | Silent | Triggerbot" bar takes (aimbot.lua passes it; default 31).
 --
 -- Build signature: Trigger.build(container, T, H, ctx) -> { Api = triggerbot, Unload = fn }
@@ -111,7 +114,7 @@ local function rayBox(origin, dir, cf, half)
 end
 
 ---------------------------------------------------------------------
--- THE ENGINE (your triggerbot code, unchanged)
+-- THE ENGINE
 ---------------------------------------------------------------------
 local function createTriggerbot(userOpts)
 	local Players = game:GetService("Players")
@@ -142,7 +145,7 @@ local function createTriggerbot(userOpts)
 	local stateCbs = {}
 	local lastNote = ""
 
-	local det = { hit = false, stage = nil, rays = 0, candidates = 0 }
+	local det = { hit = false, stage = nil, rays = 0, candidates = 0, ref = nil }
 
 	local function notify()
 		local key = tostring(S.Enabled) .. tostring(armed) .. tostring(firing)
@@ -522,11 +525,13 @@ local function createTriggerbot(userOpts)
 							local studsPerPx = (2 * z * tanHalf) / vs.Y
 							local ahead = leadVector(info.root, lead)
 							local bound = (5 + ahead.Magnitude) / studsPerPx + tol * 2 + 12
-							local off = (Vector2.new(v.X, v.Y) - ref).Magnitude
+							local scr = Vector2.new(v.X, v.Y)
+							local off = (scr - ref).Magnitude
 							if off <= bound then
 								candBuf[#candBuf + 1] = {
 									info = info,
 									off = off,
+									scr = scr,
 									pad = tol * studsPerPx,
 									ahead = ahead,
 								}
@@ -646,6 +651,7 @@ local function createTriggerbot(userOpts)
 		readPing(now)
 
 		local ref = refPoint(cam)
+		det.ref = ref
 		local myPos = originPos(cam)
 		local lead = leadSeconds()
 
@@ -878,8 +884,25 @@ local function createTriggerbot(userOpts)
 		end
 	end
 
+	-- live detection data (used by the visualizer). cands = the candidate list of the last detect, nearest first.
 	function api:GetDebug()
-		return { stage = det.stage, rays = det.rays, candidates = det.candidates, hit = det.hit }
+		return {
+			stage = det.stage,
+			rays = det.rays,
+			candidates = det.candidates,
+			hit = det.hit,
+			ref = det.ref,
+			cands = candBuf,
+		}
+	end
+
+	-- the crosshair point on screen (works even while the triggerbot is not armed)
+	function api:GetRef()
+		local cam = workspace.CurrentCamera
+		if not cam then
+			return nil
+		end
+		return refPoint(cam)
 	end
 
 	function api:Unload()
@@ -932,6 +955,7 @@ local function sl(key, name, step, fmt)
 end
 
 -- switch = the setting the switch controls (no switch = just a title). keybind / mode / enums / sliders fill the inset box.
+-- localSwitch = a switch that is not an engine setting (the visualizer overlay). custom = a special block in the box.
 local SECTIONS = {
 	{ id = "trigger", panel = "Main", title = "Triggerbot", search = "Triggerbot", words = "trigger bot auto shoot fire",
 		switch = "Enabled", keybind = true, mode = true,
@@ -964,6 +988,9 @@ local SECTIONS = {
 	{ id = "dist", panel = "Checks", title = "Distance", search = "Trigger Distance", words = "trigger distance range min max studs",
 		sliders = { sl("MinDist", "Min", 5, "%d"), sl("MaxDist", "Max", 5, "%d") } },
 
+	{ id = "viz", panel = "Tuning", title = "Visualizer", search = "Trigger Visualizer",
+		words = "trigger visualizer preview overlay debug hitbox rings view show",
+		localSwitch = "Overlay", custom = "viz" },
 	{ id = "lead", panel = "Tuning", title = "Auto Lead", search = "Trigger Auto Lead", words = "trigger lead ping prediction",
 		switch = "AutoLead",
 		sliders = { sl("LeadMs", "Lead", 5, "%d ms"), sl("MaxLeadStuds", "Max Lead", 1, "%d") } },
@@ -984,12 +1011,36 @@ local KEY_SHORT = {
 	Five = "5", Six = "6", Seven = "7", Eight = "8", Nine = "9", Return = "Enter", Backquote = "`",
 }
 
+-- the ring rays of the detection (same maths as the engine's ringStage), as pixel offsets from the crosshair
+local function ringOffsets(api)
+	local out = {}
+	local tol = api:Get("HitboxPx")
+	local rings = api:Get("Rings")
+	local rays = api:Get("RingRays")
+	if tol <= 0 or rings <= 0 then
+		return out
+	end
+	for r = 1, rings do
+		local rad = tol * r / rings
+		local turn = 0
+		if r % 2 == 0 then
+			turn = math.pi / rays
+		end
+		for a = 0, rays - 1 do
+			local ang = (a / rays) * 2 * math.pi + turn
+			out[#out + 1] = Vector2.new(math.cos(ang) * rad, math.sin(ang) * rad)
+		end
+	end
+	return out
+end
+
 function Trigger.build(container, T, H, ctx)
 	if type(ctx) ~= "table" then
 		ctx = {}
 	end
 	local TweenService = game:GetService("TweenService")
 	local UserInputService = game:GetService("UserInputService")
+	local RunService = game:GetService("RunService")
 
 	local new, corner, stroke, label = H.new, H.corner, H.stroke, H.label
 	local FAST = T.FAST
@@ -1545,6 +1596,287 @@ function Trigger.build(container, T, H, ctx)
 	end)
 
 	---------------------------------------------------------------------
+	-- VISUALIZER: preview box + optional on-screen overlay
+	---------------------------------------------------------------------
+	local previewLayer = nil
+	local overlayGui = nil
+	local overlayHost = nil
+	local overlayLayer = nil
+	local overlayOn = false
+	local vizLbl = {}
+	local HALF = 64   -- preview: half of the drawn area, in preview pixels
+
+	-- a layer = hitbox circle + ring dots + target markers, all drawn around the middle of "host"
+	local function makeLayer(host, dotPx, candPx, lineW)
+		local L = { dots = {}, cands = {}, candStrokes = {}, sig = "", dotColor = nil }
+
+		L.circle = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(0, 0),
+			Size = UDim2.fromOffset(2, 2),
+			BackgroundColor3 = T.ACCENT,
+			BackgroundTransparency = 0.88,
+			BorderSizePixel = 0,
+			ZIndex = 3,
+		}, host)
+		corner(L.circle, 100)
+		stroke(L.circle, T.ACCENT, lineW, 0)
+
+		for i = 1, 80 do
+			local d = new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Size = UDim2.fromOffset(dotPx, dotPx),
+				BackgroundColor3 = T.ICON_HOVER,
+				BorderSizePixel = 0,
+				Visible = false,
+				ZIndex = 4,
+			}, host)
+			corner(d, 100)
+			L.dots[i] = d
+		end
+
+		for i = 1, 16 do
+			local c = new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Size = UDim2.fromOffset(candPx, candPx),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				Visible = false,
+				ZIndex = 5,
+			}, host)
+			corner(c, 2)
+			L.candStrokes[i] = stroke(c, T.GOOD, lineW, 0)
+			L.cands[i] = c
+		end
+
+		local center = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Size = UDim2.fromOffset(3, 3),
+			BackgroundColor3 = T.ACCENT,
+			BorderSizePixel = 0,
+			ZIndex = 6,
+		}, host)
+		corner(center, 100)
+
+		-- scale = layer pixels per screen pixel, limX / limY = how far a target marker may sit from the middle
+		-- live = the triggerbot is armed (so dbg holds fresh data)
+		function L.update(scale, limX, limY, live, dbg)
+			local tol = api:Get("HitboxPx")
+			local d = math.max(2, tol * scale * 2)
+			L.circle.Size = UDim2.fromOffset(d, d)
+
+			local sig = tostring(tol) .. "_" .. tostring(api:Get("Rings")) .. "_" .. tostring(api:Get("RingRays")) .. "_" .. tostring(scale)
+			if sig ~= L.sig then
+				L.sig = sig
+				local offs = ringOffsets(api)
+				for i = 1, #L.dots do
+					local o = offs[i]
+					if o then
+						L.dots[i].Position = UDim2.fromOffset(o.X * scale, o.Y * scale)
+						L.dots[i].Visible = true
+					else
+						L.dots[i].Visible = false
+					end
+				end
+			end
+
+			local hit = live and dbg.hit
+			if hit then
+				L.circle.BackgroundTransparency = 0.6
+			else
+				L.circle.BackgroundTransparency = 0.88
+			end
+
+			local dotColor = T.ICON_HOVER
+			if live and dbg.stage == "ring" then
+				dotColor = T.ACCENT
+			end
+			if L.dotColor ~= dotColor then
+				L.dotColor = dotColor
+				for i = 1, #L.dots do
+					L.dots[i].BackgroundColor3 = dotColor
+				end
+			end
+
+			local n = 0
+			if live and dbg.ref then
+				n = math.min(dbg.candidates, #L.cands)
+			end
+			local cc = T.GOOD
+			if hit then
+				cc = T.ACCENT
+			end
+			for i = 1, #L.cands do
+				local f = L.cands[i]
+				if i <= n then
+					local c = dbg.cands[i]
+					local dx = (c.scr.X - dbg.ref.X) * scale
+					local dy = (c.scr.Y - dbg.ref.Y) * scale
+					f.Position = UDim2.fromOffset(math.clamp(dx, -limX, limX), math.clamp(dy, -limY, limY))
+					L.candStrokes[i].Color = cc
+					f.Visible = true
+				else
+					f.Visible = false
+				end
+			end
+		end
+
+		return L
+	end
+
+	-- the on-screen overlay is made the first time you switch it on
+	local function setOverlay(on)
+		overlayOn = on
+		if on and not overlayGui then
+			local parentGui = nil
+			if type(ctx.Win) == "table" and ctx.Win.Gui then
+				parentGui = ctx.Win.Gui.Parent
+			end
+			if not parentGui then
+				parentGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+			end
+			overlayGui = new("ScreenGui", {
+				Name = "Y1TriggerViz",
+				ResetOnSpawn = false,
+				IgnoreGuiInset = true,
+				DisplayOrder = 990,
+				ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+			}, parentGui)
+			overlayHost = new("Frame", {
+				Size = UDim2.fromOffset(0, 0),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+			}, overlayGui)
+			overlayLayer = makeLayer(overlayHost, 4, 12, 1.5)
+		end
+		if overlayGui then
+			overlayGui.Enabled = on
+		end
+	end
+
+	-- the preview box + status rows (goes inside the section's inset box)
+	local function buildViz(parent, order)
+		local wrap = new("Frame", {
+			Name = "Viz",
+			LayoutOrder = order,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, parent)
+		new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Vertical,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 6),
+		}, wrap)
+
+		local view = new("Frame", {
+			Name = "Preview",
+			LayoutOrder = 1,
+			Size = UDim2.new(1, 0, 0, 150),
+			BackgroundColor3 = T.CLUSTER_BG,
+			BorderSizePixel = 0,
+			ClipsDescendants = true,
+		}, wrap)
+		corner(view, 5)
+		stroke(view, T.BORDER, 1, 0)
+
+		-- crosshair lines
+		new("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromScale(0, 0.5),
+			Size = UDim2.new(1, 0, 0, 1),
+			BackgroundColor3 = T.BORDER,
+			BorderSizePixel = 0,
+			ZIndex = 2,
+		}, view)
+		new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.fromScale(0.5, 0),
+			Size = UDim2.new(0, 1, 1, 0),
+			BackgroundColor3 = T.BORDER,
+			BorderSizePixel = 0,
+			ZIndex = 2,
+		}, view)
+		label(view, "PREVIEW", UDim2.fromOffset(8, 5), UDim2.new(1, -16, 0, 12),
+			Enum.Font.GothamMedium, 10, T.DIM_TEXT).ZIndex = 7
+
+		local host = new("Frame", {
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(0, 0),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, view)
+		previewLayer = makeLayer(host, 4, 9, 1.5)
+
+		local function infoRow(rowOrder, name)
+			local row = new("Frame", {
+				LayoutOrder = rowOrder,
+				Size = UDim2.new(1, 0, 0, 18),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+			}, wrap)
+			label(row, name, UDim2.fromOffset(0, 0), UDim2.new(0.5, 0, 1, 0),
+				Enum.Font.GothamMedium, 12, T.ICON)
+			return label(row, "-", UDim2.new(0.5, 0, 0, 0), UDim2.new(0.5, 0, 1, 0),
+				Enum.Font.GothamMedium, 12, T.TEXT_COLOR, Enum.TextXAlignment.Right)
+		end
+		vizLbl.state = infoRow(2, "State")
+		vizLbl.stage = infoRow(3, "Stage")
+		vizLbl.rays = infoRow(4, "Rays")
+		vizLbl.targets = infoRow(5, "Targets")
+
+		label(wrap, "Switch above draws it on your screen", UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 14),
+			Enum.Font.GothamMedium, 11, T.DIM_TEXT).LayoutOrder = 6
+	end
+
+	conns[#conns + 1] = RunService.RenderStepped:Connect(function()
+		if not running or not previewLayer then
+			return
+		end
+		local dbg = api:GetDebug()
+		local live = api:IsArmed() and dbg.ref ~= nil
+
+		-- the preview zooms so the hitbox always fits
+		local tol = api:Get("HitboxPx")
+		local viewR = math.max(40, tol * 1.5 + 8)
+		previewLayer.update(HALF / viewR, 88, 70, live, dbg)
+
+		local st = "Idle"
+		if not api:Get("Enabled") then
+			st = "Off"
+		elseif api:IsFiring() then
+			st = "Firing"
+		elseif api:IsArmed() then
+			st = "Armed"
+		end
+		vizLbl.state.Text = st
+		if live then
+			vizLbl.stage.Text = tostring(dbg.stage or "none")
+			vizLbl.rays.Text = tostring(dbg.rays)
+			vizLbl.targets.Text = tostring(dbg.candidates)
+		else
+			vizLbl.stage.Text = "-"
+			vizLbl.rays.Text = "-"
+			vizLbl.targets.Text = "-"
+		end
+
+		if overlayOn and overlayLayer then
+			local ref = nil
+			if live then
+				ref = dbg.ref
+			else
+				ref = api:GetRef()
+			end
+			if ref then
+				overlayHost.Position = UDim2.fromOffset(ref.X, ref.Y)
+				overlayLayer.update(1, 100000, 100000, live, dbg)
+			end
+		end
+	end)
+
+	---------------------------------------------------------------------
 	-- ONE SECTION = name + switch on top, the settings in one inset box under it
 	---------------------------------------------------------------------
 	local sections = {}   -- [id] = { outer, box, body }
@@ -1592,9 +1924,13 @@ function Trigger.build(container, T, H, ctx)
 				api:Set(def.switch, on)
 				syncHint()
 			end)
+		elseif def.localSwitch then
+			makeSwitch(head, false, function(on)
+				setOverlay(on)
+			end)
 		end
 
-		local hasBox = def.keybind or def.mode or def.enums or def.sliders
+		local hasBox = def.keybind or def.mode or def.enums or def.sliders or def.custom
 		local box = nil
 		if hasBox then
 			box = new("Frame", {
@@ -1702,6 +2038,11 @@ function Trigger.build(container, T, H, ctx)
 				for i = 1, #def.sliders do
 					makeSlider(box, boxOrder(), def.sliders[i])
 				end
+			end
+
+			-- the visualizer block
+			if def.custom == "viz" then
+				buildViz(box, boxOrder())
 			end
 		end
 
@@ -1843,6 +2184,12 @@ function Trigger.build(container, T, H, ctx)
 		conns = {}
 		if env and env.Y1_TRIGGERBOT == api then
 			env.Y1_TRIGGERBOT = nil
+		end
+		if overlayGui then
+			pcall(function()
+				overlayGui:Destroy()
+			end)
+			overlayGui = nil
 		end
 		if root and root.Parent then
 			root:Destroy()
