@@ -25,9 +25,9 @@ function Misc1.build(container, T, H, ctx)
 
 	local GAP = 14        -- space between the three panels
 	local HEAD = 34
-	local SW_W = 150      -- switcher width
+	local SW_W = 220      -- switcher width
 	local SW_H = 28       -- switcher height
-	local SW_GAP = 8      -- space between the pages and the switcher
+	local SW_GAP = 3      -- space between the pages and the switcher (smaller = closer to the panels)
 
 	local root = H.new("Frame", {
 		Name = "MiscRoot",
@@ -44,17 +44,14 @@ function Misc1.build(container, T, H, ctx)
 		BorderSizePixel = 0,
 	}, root)
 
+	-- plain frames on purpose (not CanvasGroups): the window and the tab page are already CanvasGroups,
+	-- and stacking more of them is heavy and can crash weaker devices
 	local function makePage(name, shown)
-		local gt = 1
-		if shown then
-			gt = 0
-		end
-		return H.new("CanvasGroup", {
+		return H.new("Frame", {
 			Name = name,
 			Size = UDim2.fromScale(1, 1),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			GroupTransparency = gt,
 			Visible = shown,
 		}, view)
 	end
@@ -269,7 +266,6 @@ function Misc1.build(container, T, H, ctx)
 	H.corner(bar, 1)
 
 	local current = "Main"
-	local token = 0
 	local btns = {}
 
 	local function paintButtons()
@@ -290,8 +286,6 @@ function Misc1.build(container, T, H, ctx)
 			return
 		end
 		current = name
-		token = token + 1
-		local tk = token
 
 		local nxt = mainPage
 		local prv = extrasPage
@@ -305,16 +299,8 @@ function Misc1.build(container, T, H, ctx)
 		TweenService:Create(indicator, T.SMOOTH, { Position = pos }):Play()
 		paintButtons()
 
-		TweenService:Create(prv, T.FAST, { GroupTransparency = 1 }):Play()
-		task.delay(0.14, function()
-			if tk == token then
-				prv.Visible = false
-			end
-		end)
-		nxt.Position = UDim2.fromOffset(0, 8)
-		nxt.GroupTransparency = 1
+		prv.Visible = false
 		nxt.Visible = true
-		TweenService:Create(nxt, T.SMOOTH, { Position = UDim2.fromOffset(0, 0), GroupTransparency = 0 }):Play()
 	end
 
 	local function makeButton(name, x)
