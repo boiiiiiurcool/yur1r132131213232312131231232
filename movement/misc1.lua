@@ -25,8 +25,8 @@ function Misc1.build(container, T, H, ctx)
 
 	local GAP = 8
 	local HEAD = 34
-	local SW_W = 140      -- switcher width
-	local SW_H = 26       -- switcher height
+	local SW_W = 150      -- switcher width
+	local SW_H = 28       -- switcher height
 	local SW_GAP = 8      -- space between the pages and the switcher
 
 	local root = H.new("Frame", {
@@ -189,19 +189,30 @@ function Misc1.build(container, T, H, ctx)
 		BorderSizePixel = 0,
 		ZIndex = 5,
 	}, root)
-	H.corner(switcher, 100)
+	H.corner(switcher, 5)
 	H.stroke(switcher, T.BORDER, 1, 0)
 
+	-- flat grey block under the active option, with the same small red bar the bottom tab bar uses
 	local indicator = H.new("Frame", {
 		Name = "Indicator",
-		Position = UDim2.new(0, 2, 0, 2),
-		Size = UDim2.new(0.5, -4, 1, -4),
+		Position = UDim2.new(0, 3, 0, 3),
+		Size = UDim2.new(0.5, -6, 1, -6),
 		BackgroundColor3 = T.HOVER_GREY,
+		BackgroundTransparency = 0.4,
 		BorderSizePixel = 0,
 		ZIndex = 6,
 	}, switcher)
-	H.corner(indicator, 100)
-	H.stroke(indicator, T.ACCENT, 1, 0.3)
+	H.corner(indicator, 3)
+	local bar = H.new("Frame", {
+		Name = "RedBar",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, 0),
+		Size = UDim2.fromOffset(20, 2),
+		BackgroundColor3 = T.ACCENT,
+		BorderSizePixel = 0,
+		ZIndex = 7,
+	}, indicator)
+	H.corner(bar, 1)
 
 	local current = "Main"
 	local token = 0
@@ -230,11 +241,11 @@ function Misc1.build(container, T, H, ctx)
 
 		local nxt = mainPage
 		local prv = extrasPage
-		local pos = UDim2.new(0, 2, 0, 2)
+		local pos = UDim2.new(0, 3, 0, 3)
 		if name == "Extras" then
 			nxt = extrasPage
 			prv = mainPage
-			pos = UDim2.new(0.5, 2, 0, 2)
+			pos = UDim2.new(0.5, 3, 0, 3)
 		end
 
 		TweenService:Create(indicator, T.SMOOTH, { Position = pos }):Play()
