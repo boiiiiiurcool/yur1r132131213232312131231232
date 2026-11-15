@@ -871,37 +871,9 @@ function Spoofer.build(parent, T, H, ctx)
 
 	local realLbl = makeNote("Real ping: -", T.TEXT_COLOR)
 	local shownLbl = makeNote("Shown ping: -", T.TEXT_COLOR)
-	local hookLbl = makeNote("", T.DIM_TEXT)
-	local overLbl = makeNote("", T.DIM_TEXT)
-	makeNote("Esc > Settings > Performance Stats (not Shift+F3).", T.DIM_TEXT)
-
+	-- (the old hook / overlay status lines are gone on purpose)
 	local function statusLines()
-		if canHook then
-			if shared.hooked then
-				hookLbl.Text = "Scripts hook: active"
-				hookLbl.TextColor3 = GREEN
-			else
-				hookLbl.Text = "Scripts hook: ready"
-				hookLbl.TextColor3 = T.DIM_TEXT
-			end
-		else
-			hookLbl.Text = "Scripts hook: not supported by executor"
-			hookLbl.TextColor3 = AMBER
-		end
-		if not coreOk then
-			overLbl.Text = "Overlay: CoreGui blocked by executor"
-			overLbl.TextColor3 = AMBER
-		elseif labelCount > 0 then
-			overLbl.Text = "Overlay: patched (" .. tostring(labelCount) .. " label" .. (labelCount == 1 and "" or "s")
-				.. ", " .. tostring(graphCount) .. " graph" .. (graphCount == 1 and "" or "s")
-				.. ", " .. tostring(dotCount) .. " dot" .. (dotCount == 1 and "" or "s") .. ")"
-			overLbl.TextColor3 = GREEN
-		else
-			overLbl.Text = "Overlay: waiting (turn on Perf Stats)"
-			overLbl.TextColor3 = T.DIM_TEXT
-		end
 	end
-	statusLines()
 
 	local acc = 0
 	local jacc = 0
