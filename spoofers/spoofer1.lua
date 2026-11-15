@@ -1,4 +1,4 @@
--- hitboxspoofer.lua
+-- hitboxspoofer
 local HitboxSpoofer = {}
 
 function HitboxSpoofer.new(options)
