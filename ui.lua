@@ -1275,15 +1275,12 @@ function UI.new(opts)
 		corner(frame, 6)
 		stroke(frame, BORDER, 1, 0.45)
 		local dot = new("Frame", {
-			AnchorPoint = Vector2.new(0, 0.5),
-			Position = UDim2.new(0, 11, 0.5, 0),
-			Size = UDim2.fromOffset(7, 7),
-			BackgroundColor3 = DIM_TEXT,
+			Visible = false,
+			Size = UDim2.fromOffset(0, 0),
+			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			ZIndex = 4,
 		}, frame)
-		corner(dot, 100)
-		local name = label(frame, "", UDim2.fromOffset(26, 0), UDim2.new(1, -86, 1, 0),
+		local name = label(frame, "", UDim2.fromOffset(12, 0), UDim2.new(1, -72, 1, 0),
 			Enum.Font.GothamMedium, 13, TEXT_COLOR)
 		name.ZIndex = 4
 		local cap = new("TextLabel", {
@@ -1360,7 +1357,6 @@ function UI.new(opts)
 			h.cap.BackgroundTransparency = 1
 			h.cap.TextTransparency = 1
 			TweenService:Create(h.frame, SMOOTH, { BackgroundTransparency = 0 }):Play()
-			TweenService:Create(h.dot, SMOOTH, { BackgroundTransparency = 0 }):Play()
 			TweenService:Create(h.name, SMOOTH, { TextTransparency = 0 }):Play()
 			TweenService:Create(h.cap, SMOOTH, { BackgroundTransparency = 0, TextTransparency = 0 }):Play()
 		else
@@ -1487,20 +1483,6 @@ function UI.new(opts)
 		end
 
 		local nameX = 16
-		if def.toggle then
-			nameX = 32
-			local dot = new("Frame", {
-				Name = def.id .. "Dot",
-				AnchorPoint = Vector2.new(0, 0.5),
-				Position = UDim2.fromOffset(16, y + (KB_ROW - 4) / 2),
-				Size = UDim2.fromOffset(8, 8),
-				BackgroundColor3 = DIM_TEXT,
-				BorderSizePixel = 0,
-				ZIndex = 3,
-			}, kbPanel)
-			corner(dot, 100)
-			kbDots[def.id] = dot
-		end
 		label(kbPanel, tostring(def.title or def.id), UDim2.fromOffset(nameX, y), UDim2.new(1, -(nameX + 114), 0, KB_ROW - 4),
 			Enum.Font.GothamMedium, 13, nameColor).ZIndex = 3
 
