@@ -24,7 +24,33 @@ function Misc2.build(container, T, H, ctx)
 	H.stroke(root, T.BORDER, 1, 0)
 
 	-- title bar with the thin red line, same look as the Main panels
-	H.label(root, "Extras", UDim2.fromOffset(12, 0), UDim2.new(1, -24, 0, 34),
+	-- plus icon (same one the Extras panel on the Main side uses)
+	local ico = H.new("Frame", {
+		Position = UDim2.fromOffset(12, 9),
+		Size = UDim2.fromOffset(16, 16),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 3,
+	}, root)
+	local pw = H.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(12, 2),
+		BackgroundColor3 = T.ACCENT,
+		BorderSizePixel = 0,
+		ZIndex = 4,
+	}, ico)
+	H.corner(pw, 1)
+	local ph = H.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(2, 12),
+		BackgroundColor3 = T.ACCENT,
+		BorderSizePixel = 0,
+		ZIndex = 4,
+	}, ico)
+	H.corner(ph, 1)
+	H.label(root, "Extras", UDim2.fromOffset(36, 0), UDim2.new(1, -48, 0, 34),
 		Enum.Font.GothamBold, 13, T.TEXT_COLOR).ZIndex = 3
 	H.new("Frame", {
 		Name = "HeadLine",
