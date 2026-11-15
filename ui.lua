@@ -1132,7 +1132,7 @@ function UI.new(opts)
 		end
 	end
 
-	---------------------------------------------------------------------
+---------------------------------------------------------------------
 	-- SEARCH RESULTS: typing in the search box lists the best 3 features that match, right under it.
 	-- Find (click a row, or press Enter for the top one) switches to that feature's tab and calls its go().
 	-- Features are added with win:AddSearch (every tab is findable by name already).
@@ -1284,9 +1284,7 @@ function UI.new(opts)
 				topEntry = found[1].e
 				for i = 1, n do
 					local e = found[i].e
-					local row = new("TextButton", {
-						AutoButtonColor = false,
-						Text = "",
+					local row = new("Frame", {
 						Position = UDim2.fromOffset(PAD, PAD + (i - 1) * (ROW + ROW_GAP)),
 						Size = UDim2.new(1, -PAD * 2, 0, ROW),
 						BackgroundColor3 = HOVER_GREY,
@@ -1314,18 +1312,40 @@ function UI.new(opts)
 					}, row)
 					corner(tag, 6)
 					local tagLine = stroke(tag, BORDER, 1, 0)
-					row.MouseEnter:Connect(function()
+					-- one invisible button covers the WHOLE row (name, tab and the Find tag), so clicking
+					-- anywhere on the row opens the feature. It reacts on the press, not on the release, so a
+					-- moving layout (touch keyboard closing, the box losing focus) cannot make it miss.
+					local hit = new("TextButton", {
+						AutoButtonColor = false,
+						Text = "",
+						BackgroundTransparency = 1,
+						Size = UDim2.fromScale(1, 1),
+						ZIndex = 96,
+					}, row)
+					local picked = false
+					local function pick()
+						if picked then
+							return
+						end
+						picked = true
+						findEntry(e)
+					end
+					hit.InputBegan:Connect(function(input)
+						if input.UserInputType == Enum.UserInputType.MouseButton1
+							or input.UserInputType == Enum.UserInputType.Touch then
+							pick()
+						end
+					end)
+					hit.Activated:Connect(pick)
+					hit.MouseEnter:Connect(function()
 						TweenService:Create(row, FAST, { BackgroundTransparency = 0.55 }):Play()
 						TweenService:Create(tagLine, FAST, { Color = CALM_RED }):Play()
 						TweenService:Create(tag, FAST, { TextColor3 = ICON_HOVER }):Play()
 					end)
-					row.MouseLeave:Connect(function()
+					hit.MouseLeave:Connect(function()
 						TweenService:Create(row, FAST, { BackgroundTransparency = 1 }):Play()
 						TweenService:Create(tagLine, FAST, { Color = BORDER }):Play()
 						TweenService:Create(tag, FAST, { TextColor3 = ICON }):Play()
-					end)
-					row.Activated:Connect(function()
-						findEntry(e)
 					end)
 					rows[i] = row
 				end
