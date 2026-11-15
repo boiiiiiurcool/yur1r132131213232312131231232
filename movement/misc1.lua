@@ -20,6 +20,13 @@
 --     sliders (name left, value right, red bar)
 -- Every switch is OFF each time the script starts. Turning a feature off (or unloading) puts back what it changed.
 --
+-- KEYBINDS PANEL (left of the window): a feature only shows there while it is RUNNING.
+--   Always = shown while the switch is on.   Toggle = shown only after the key turned it on.
+--   Hold   = shown only while the key is held down.   Switched on but not running = not shown.
+--
+-- SEARCH: every feature is registered with the window's search box (ctx.Win:AddSearch). Typing "walk" in the
+--   top bar lists Walk Speed; Find switches to the Misc tab, scrolls to it and flashes its box.
+--
 -- Features:
 --   Walk Speed   Velocity  = pushes your horizontal velocity to the speed (does not touch WalkSpeed)
 --                Position  = moves your position a little every frame
@@ -50,6 +57,22 @@ local PANELS = {
 		ids = { "tickrate", "bhop", "noclip", "spider", "float" } },
 	{ id = "ZhdExtras", title = "Zhd extras", tall = true,  icon = "diamond",
 		ids = { "noslow", "nojumpcd" } },
+}
+
+-- extra words the search box also matches for each feature (the feature name is always matched)
+local SEARCH_WORDS = {
+	walkspeed = "speed run move velocity slippery",
+	fly = "flight air",
+	jumppower = "jump height",
+	gravity = "grav",
+	tickrate = "tick rate physics",
+	bhop = "bunny hop jump speed",
+	noclip = "no clip wall collide",
+	infjump = "infinite jump air",
+	spider = "spiderman climb wall",
+	float = "hover hip height",
+	noslow = "slowdown zee hood zhd",
+	nojumpcd = "cooldown jump zee hood zhd",
 }
 
 function Misc1.build(container, T, H, ctx)
@@ -366,8 +389,8 @@ function Misc1.build(container, T, H, ctx)
 		return KEY_SHORT[f.key.Name] or f.key.Name
 	end
 
-	-- the Keybinds panel on the left of the window: a row shows up while the switch is ON (even if the key has
-	-- not been pressed yet) and goes away when it is switched off. The row shows the feature and its key.
+	-- the Keybinds panel on the left of the window: a row shows up only while the feature is RUNNING
+	-- (switched on AND, for Toggle / Hold, the key turned it on / is held) and goes away when it stops.
 	local function syncHint(f)
 		local win = nil
 		if type(ctx) == "table" then
@@ -376,14 +399,18 @@ function Misc1.build(container, T, H, ctx)
 		if not win or type(win.SetHint) ~= "function" then
 			return
 		end
-		if f.enabled then
-			win:SetHint(f.def.id, { title = f.def.title, key = shortKey(f), active = isActive(f) })
+		if isActive(f) then
+			win:SetHint(f.def.id, {
+				title = f.def.title,
+				key = (f.mode == "Always" and not f.key) and "Always" or shortKey(f),
+				active = true,
+			})
 		else
 			win:SetHint(f.def.id, nil)
 		end
 	end
 
-	-- called whenever the switch, the mode or the key of a feature changes
+	-- called whenever the switch, the mode, the key or the held / toggled state of a feature changes
 	local function paintStatus(f)
 		syncHint(f)
 	end
@@ -875,6 +902,41 @@ function Misc1.build(container, T, H, ctx)
 			end
 		end
 		applyShow()
+
+		-- findable from the search box: Find switches to the Misc tab (done by the window), then this scrolls the
+		-- panel to the feature and flashes its settings box in red
+		if type(ctx) == "table" and ctx.Win and type(ctx.Win.AddSearch) == "function" then
+			ctx.Win:AddSearch({
+				owner = "Misc",
+				title = d.title,
+				tab = "Misc",
+				keywords = SEARCH_WORDS[d.id] or "",
+				go = function()
+					if type(ctx.Win.MiscShow) == "function" then
+						ctx.Win.MiscShow("Main")
+					end
+					-- the window may be scaled: positions on screen are scaled, the canvas is not
+					local sc = 1
+					if ctx.Win.Window then
+						local us = ctx.Win.Window:FindFirstChildOfClass("UIScale")
+						if us and us.Scale > 0 then
+							sc = us.Scale
+						end
+					end
+					local y = (outer.AbsolutePosition.Y - body.AbsolutePosition.Y) / sc + body.CanvasPosition.Y - 10
+					local maxY = math.max(0, (body.AbsoluteCanvasSize.Y - body.AbsoluteWindowSize.Y) / sc)
+					TweenService:Create(body, SMOOTH, { CanvasPosition = Vector2.new(0, math.clamp(y, 0, maxY)) }):Play()
+					-- a red outline that fades back to normal
+					local st = box:FindFirstChildOfClass("UIStroke")
+					if st then
+						st.Color = T.ACCENT
+						st.Thickness = 2
+						TweenService:Create(st, TweenInfo.new(1.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+							{ Color = T.BORDER, Thickness = 1 }):Play()
+					end
+				end,
+			})
+		end
 
 		-- DISABLED: a washed-out cover over the whole feature. It takes every click, so the switch, the key box,
 		-- the drop-downs and the sliders under it cannot be used.
@@ -1777,6 +1839,10 @@ function Misc1.build(container, T, H, ctx)
 		Show = show,
 		Unload = function()
 			moveUnload()
+			-- take this module's features out of the search box
+			if type(ctx) == "table" and ctx.Win and type(ctx.Win.RemoveSearch) == "function" then
+				pcall(ctx.Win.RemoveSearch, ctx.Win, "Misc")
+			end
 			if extrasHandle and type(extrasHandle.Unload) == "function" then
 				pcall(extrasHandle.Unload)
 			end
