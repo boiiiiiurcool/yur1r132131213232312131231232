@@ -28,6 +28,7 @@
 --   win:OnSearch(fn(query))      win:GetSearch()              win:SetSearch(text)
 --   win:AddBind({ id, title, wired, default = { kind = "Key", key = Enum.KeyCode.E } })
 --   win:IsBind(id, input)        win:GetBind(id)              win:SetHidden(bool)
+--   win:SetHint(id, { title, key, active })   -- a live row in the Keybinds panel (shown while a module is on); win:SetHint(id, nil) removes it
 --   win:SetPageMessage(id, title, text, isError)
 --
 -- MODULE TOGGLES (Trigger Bot, Aimbot, ESP ... everything you can turn on / off)
@@ -1242,6 +1243,131 @@ function UI.new(opts)
 		Enum.Font.GothamMedium, 12, DIM_TEXT, Enum.TextXAlignment.Center)
 	kbEmpty.ZIndex = 3
 
+	---------------------------------------------------------------------
+	-- LIVE ROWS: a module that is switched ON shows up here (name on the left, its key as a small key cap on the
+	-- right) and disappears again when it is switched off. Rows sit under the plain bind rows.
+	--   win:SetHint(id, { title = "Jump Power", key = "E", active = true })   -- add / update
+	--   win:SetHint(id, nil)                                                  -- remove
+	---------------------------------------------------------------------
+	local hints = {}        -- [id] = { frame, dot, name, cap }
+	local hintOrder = {}    -- ids in the order they were switched on
+
+	-- puts every row in place and sizes the panel to fit
+	local function kbLayout()
+		local total = #BINDS + #hintOrder
+		kbEmpty.Visible = (total == 0)
+		for i = 1, #hintOrder do
+			local h = hints[hintOrder[i]]
+			local y = KB_HEAD + 4 + (#BINDS + i - 1) * KB_ROW
+			h.frame.Position = UDim2.fromOffset(10, y + 2)
+		end
+		kbPanel.Size = UDim2.fromOffset(KB_W, KB_HEAD + math.max(1, total) * KB_ROW + 12)
+	end
+
+	local function makeHint(id)
+		local frame = new("Frame", {
+			Name = id .. "Hint",
+			Size = UDim2.new(1, -20, 0, 28),
+			BackgroundColor3 = WELL,
+			BorderSizePixel = 0,
+			ZIndex = 3,
+		}, kbPanel)
+		corner(frame, 6)
+		stroke(frame, BORDER, 1, 0.45)
+		local dot = new("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 11, 0.5, 0),
+			Size = UDim2.fromOffset(7, 7),
+			BackgroundColor3 = DIM_TEXT,
+			BorderSizePixel = 0,
+			ZIndex = 4,
+		}, frame)
+		corner(dot, 100)
+		local name = label(frame, "", UDim2.fromOffset(26, 0), UDim2.new(1, -86, 1, 0),
+			Enum.Font.GothamMedium, 13, TEXT_COLOR)
+		name.ZIndex = 4
+		local cap = new("TextLabel", {
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, -5, 0.5, 0),
+			Size = UDim2.fromOffset(0, 20),
+			AutomaticSize = Enum.AutomaticSize.X,
+			BackgroundColor3 = BG,
+			BorderSizePixel = 0,
+			Font = Enum.Font.GothamMedium,
+			Text = "",
+			TextSize = 11,
+			TextColor3 = ICON_HOVER,
+			ZIndex = 4,
+		}, frame)
+		corner(cap, 5)
+		new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }, cap)
+		new("UISizeConstraint", { MinSize = Vector2.new(28, 20) }, cap)
+		stroke(cap, BORDER, 1, 0)
+		return { frame = frame, dot = dot, name = name, cap = cap }
+	end
+
+	local function setHint(id, info)
+		if type(id) ~= "string" then
+			return
+		end
+		local h = hints[id]
+		if type(info) ~= "table" then
+			-- remove the row
+			if h then
+				hints[id] = nil
+				for i = 1, #hintOrder do
+					if hintOrder[i] == id then
+						table.remove(hintOrder, i)
+						break
+					end
+				end
+				pcall(function()
+					h.frame:Destroy()
+				end)
+				kbLayout()
+			end
+			return
+		end
+
+		local isNew = false
+		if not h then
+			isNew = true
+			h = makeHint(id)
+			hints[id] = h
+			hintOrder[#hintOrder + 1] = id
+		end
+
+		h.name.Text = tostring(info.title or id)
+		local keyText = tostring(info.key or "None")
+		h.cap.Text = keyText
+		if keyText == "None" then
+			h.cap.TextColor3 = DIM_TEXT
+		else
+			h.cap.TextColor3 = ICON_HOVER
+		end
+		local dotColor = DIM_TEXT
+		if info.active then
+			dotColor = ON_GREEN
+		end
+
+		if isNew then
+			h.dot.BackgroundColor3 = dotColor
+			kbLayout()
+			-- fade the new row in
+			h.frame.BackgroundTransparency = 1
+			h.dot.BackgroundTransparency = 1
+			h.name.TextTransparency = 1
+			h.cap.BackgroundTransparency = 1
+			h.cap.TextTransparency = 1
+			TweenService:Create(h.frame, SMOOTH, { BackgroundTransparency = 0 }):Play()
+			TweenService:Create(h.dot, SMOOTH, { BackgroundTransparency = 0 }):Play()
+			TweenService:Create(h.name, SMOOTH, { TextTransparency = 0 }):Play()
+			TweenService:Create(h.cap, SMOOTH, { BackgroundTransparency = 0, TextTransparency = 0 }):Play()
+		else
+			TweenService:Create(h.dot, FAST, { BackgroundColor3 = dotColor }):Play()
+		end
+	end
+
 	local function kbRefresh()
 		local show = kbOpen and not kbSuppressed
 		kbToken = kbToken + 1
@@ -1428,8 +1554,7 @@ function UI.new(opts)
 			kbPaint(def.id)
 		end)
 
-		kbEmpty.Visible = false
-		kbPanel.Size = UDim2.fromOffset(KB_W, KB_HEAD + #BINDS * KB_ROW + 12)
+		kbLayout()
 	end
 
 	-- the next key / mouse button pressed becomes the bind
@@ -2422,6 +2547,12 @@ function UI.new(opts)
 	end
 	function win:GetBind(id)
 		return bindName(binds[id])
+	end
+
+	-- live rows in the Keybinds panel: shown while a module is switched on (see LIVE ROWS above)
+	--   win:SetHint("JumpPower", { title = "Jump Power", key = "E", active = true })   win:SetHint("JumpPower", nil)
+	function win:SetHint(id, info)
+		setHint(id, info)
 	end
 
 	-- module toggles (see the notes at the top of this file)
