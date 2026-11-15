@@ -10,10 +10,11 @@
 
 local Misc1 = {}
 
+-- h = height of the panel as a share of the page (Movement tallest, Zhd extras shortest)
 local PANELS = {
-	{ id = "Movement", title = "Movement" },
-	{ id = "Extras",   title = "Extras" },
-	{ id = "ZhdExtras", title = "Zhd extras" },
+	{ id = "Movement",  title = "Movement",   h = 0.96 },
+	{ id = "Extras",    title = "Extras",     h = 0.78 },
+	{ id = "ZhdExtras", title = "Zhd extras", h = 0.60 },
 }
 
 function Misc1.build(container, T, H, ctx)
@@ -44,7 +45,7 @@ function Misc1.build(container, T, H, ctx)
 		local panel = H.new("Frame", {
 			Name = def.id .. "Panel",
 			LayoutOrder = i,
-			Size = UDim2.new(1 / count, -(GAP * (count - 1)) / count, 1, 0),
+			Size = UDim2.new(1 / count, -(GAP * (count - 1)) / count, def.h, 0),
 			BackgroundColor3 = T.SIDEBAR_BG,
 			BorderSizePixel = 0,
 			ClipsDescendants = true,
