@@ -1,4 +1,15 @@
--- hitboxspoofer
+-- spoofer1.lua  (Y1 Misc > Extras > Extra Needs: the Hitbox Spoofer)
+-- ASCII only, conservative syntax (no += and no continue). No console output on purpose.
+--
+-- This is the old hitboxspoofer.lua with the look of the Extras page: a name + switch on top and one inset box under it.
+-- It is now its OWN switch: it no longer follows the Hitbox Expander. Switch it on when you use the expander (or
+-- any big hitbox) and it does two things for every player:
+--   1) BLOOD: blood comes out at its usual place on the body part that was hit, even though the HumanoidRootPart is big.
+--   2) ARMOR: the armor visual (DefenseBBGUI + Vest) keeps its normal size and position no matter how big the hitbox is.
+-- Switched off (or unloaded) everything is put back.
+--
+-- Build signature: Spoofer.build(parent, T, H, ctx) -> { Root = frame, Box = settings box, Unload = fn }
+
 local HitboxSpoofer = {}
 
 function HitboxSpoofer.new(options)
@@ -653,4 +664,153 @@ function HitboxSpoofer.new(options)
 	return obj
 end
 
-return HitboxSpoofer
+local Spoofer = {}
+
+function Spoofer.build(parent, T, H, ctx)
+	local TweenService = game:GetService("TweenService")
+	local new, corner, stroke, label = H.new, H.corner, H.stroke, H.label
+	local TITLE = "Hitbox Spoofer"
+
+	-- layout (same numbers as the Main page of misc1.lua / extra2.lua)
+	local HEADER_H = 28
+	local BOX_PAD = 10
+	local BOX_GAP = 9
+	local ROW_H = 28
+	local SLIDER_H = 38
+	local FAST = T.FAST
+	local SMOOTH = T.SMOOTH
+
+	-- one section: name + switch on top, one inset box (the settings) under it
+	local holder = new("Frame", {
+		Name = "SpooferHolder",
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+	}, parent)
+	new("UIListLayout", {
+		FillDirection = Enum.FillDirection.Vertical,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 12),
+	}, holder)
+
+	local head = new("Frame", {
+		Name = "Header",
+		LayoutOrder = 1,
+		Size = UDim2.new(1, 0, 0, HEADER_H),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+	}, holder)
+	label(head, TITLE, UDim2.fromOffset(2, 0), UDim2.new(1, -56, 1, 0),
+		Enum.Font.GothamBold, 14, T.TEXT_COLOR)
+
+	local function makeSwitch(row, onChange)
+		local on = false
+		local track = new("TextButton", {
+			AutoButtonColor = false,
+			Text = "",
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, 0, 0.5, 0),
+			Size = UDim2.fromOffset(38, 20),
+			BackgroundColor3 = T.CLUSTER_BG,
+			BorderSizePixel = 0,
+		}, row)
+		corner(track, 100)
+		stroke(track, T.BORDER, 1, 0)
+		local knob = new("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 3, 0.5, 0),
+			Size = UDim2.fromOffset(14, 14),
+			BackgroundColor3 = T.DIM_TEXT,
+			BorderSizePixel = 0,
+		}, track)
+		corner(knob, 100)
+		track.Activated:Connect(function()
+			on = not on
+			local pos = UDim2.new(0, 3, 0.5, 0)
+			local tc = T.CLUSTER_BG
+			local kc = T.DIM_TEXT
+			if on then
+				pos = UDim2.new(0, 21, 0.5, 0)
+				tc = T.JOIN_BG
+				kc = T.BLACK
+			end
+			TweenService:Create(knob, SMOOTH, { Position = pos }):Play()
+			TweenService:Create(knob, FAST, { BackgroundColor3 = kc }):Play()
+			TweenService:Create(track, FAST, { BackgroundColor3 = tc }):Play()
+			onChange(on)
+		end)
+	end
+
+	local box = new("Frame", {
+		Name = "Settings",
+		LayoutOrder = 2,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundColor3 = T.WELL,
+		BorderSizePixel = 0,
+	}, holder)
+	corner(box, 6)
+	stroke(box, T.BORDER, 1, 0)
+	new("UIPadding", {
+		PaddingLeft = UDim.new(0, BOX_PAD),
+		PaddingRight = UDim.new(0, BOX_PAD),
+		PaddingTop = UDim.new(0, BOX_PAD),
+		PaddingBottom = UDim.new(0, BOX_PAD),
+	}, box)
+	new("UIListLayout", {
+		FillDirection = Enum.FillDirection.Vertical,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, BOX_GAP),
+	}, box)
+	local boxN = 0
+	local function nextOrder()
+		boxN = boxN + 1
+		return boxN
+	end
+
+	-- a wrapped line of small text
+	local function makeNote(text, color)
+		local n = label(box, text, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 0),
+			Enum.Font.Gotham, 11, color or T.DIM_TEXT)
+		n.LayoutOrder = nextOrder()
+		n.TextWrapped = true
+		n.TextTruncate = Enum.TextTruncate.None
+		n.TextYAlignment = Enum.TextYAlignment.Top
+		n.AutomaticSize = Enum.AutomaticSize.Y
+		return n
+	end
+
+	local spoofer = HitboxSpoofer.new()
+	local okState = true
+
+	makeSwitch(head, function(on)
+		local ok = pcall(function()
+			spoofer:SetEnabled(on)
+		end)
+		okState = ok
+	end)
+
+	makeNote("Keeps blood on the body part that was hit and the armor visual at its normal size, even with a big hitbox.")
+	makeNote("Use it together with the Hitbox Expander.")
+
+	local unloaded = false
+	local function unload()
+		if unloaded then
+			return
+		end
+		unloaded = true
+		pcall(function()
+			spoofer:Unload()
+		end)
+		pcall(function()
+			holder:Destroy()
+		end)
+	end
+
+	return { Root = holder, Box = box, Unload = unload }
+end
+
+return Spoofer
