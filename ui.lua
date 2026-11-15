@@ -26,26 +26,13 @@
 --   win:Toast(text, seconds)     win:ShowTab(id)              win:GetTab()           win:OnTab(fn(id))
 --   win:GetPage(id)              win.Pages[id]                win.MainPage           win.Gui / win.Window / win.Content
 --   win:OnSearch(fn(query))      win:GetSearch()              win:SetSearch(text)
---   win:AddSearch({ owner, title, tab, keywords, go })   -- makes a feature findable from the search box (see below)
---   win:RemoveSearch(owner)                               -- removes every entry that module added
 --   win:AddBind({ id, title, wired, default = { kind = "Key", key = Enum.KeyCode.E } })
 --   win:IsBind(id, input)        win:GetBind(id)              win:SetHidden(bool)
---   win:SetHint(id, { title, key, active })   -- a live row in the Keybinds panel; win:SetHint(id, nil) removes it
+--   win:SetHint(id, { title, key, active })   -- a live row in the Keybinds panel (shown while a module is on); win:SetHint(id, nil) removes it
 --   win:SetPageMessage(id, title, text, isError)
 --
--- SEARCH (the box in the top bar)
---   Typing lists the features that match (name, keywords, tab). Clicking a row, its Find tag, or pressing Enter for the
---   top result switches to that feature's tab and then calls its go() so the module can scroll to it / flash it.
---   win:AddSearch({ owner = "Misc", title = "Walk Speed", tab = "Misc", keywords = "speed run", go = function() end })
---   Every tab is findable by name already ("Info tab"). Call win:RemoveSearch(owner) when your module unloads.
---
--- KEYBINDS PANEL ROWS
---   Plain rows (win:AddBind / opts.Binds) are always listed. Live rows (win:SetHint) are meant for features that are
---   RUNNING right now: add the row when the feature is active (switched on and, for Toggle / Hold modes, the key was
---   pressed / is held) and remove it again with win:SetHint(id, nil) when it stops.
---
 -- MODULE TOGGLES (Trigger Bot, Aimbot, ESP ... everything you can turn on / off)
---   Every toggle gets a row in the Keybinds panel with its name and its key.
+--   Every toggle gets a row in the Keybinds panel: a status dot (grey = off, green = on), its name and its key.
 --   Pressing the key flips the module (a small toast says "Trigger Bot on / off"). Click the key box to rebind.
 --   win:AddToggle({ id = "TriggerBot", title = "Trigger Bot", default = { kind = "Key", key = Enum.KeyCode.T },
 --                   enabled = false, wired = true, onToggle = function(on) end })
@@ -106,7 +93,7 @@ function UI.new(opts)
 	local DIM_TEXT   = Color3.fromRGB(122, 122, 128)
 	local CALM_RED   = Color3.fromRGB(196, 92, 92)    -- accent
 	local HOVER_GREY = Color3.fromRGB(62, 62, 66)
-	local ON_GREEN   = Color3.fromRGB(110, 200, 140)  -- still in the theme table for modules (T.GOOD)
+	local ON_GREEN   = Color3.fromRGB(110, 200, 140)  -- "module is on" dot
 
 	local RADIUS = 4
 
@@ -776,12 +763,10 @@ function UI.new(opts)
 	---------------------------------------------------------------------
 	-- SEARCH BOX (top bar, between the tab name and the window buttons)
 	-- You can click it and type. Modules can listen with win:OnSearch(function(query) ... end).
-	-- The results list that drops down under it is built further down (SEARCH RESULTS).
-	-- Escape clears it, the small x clears it, Enter opens the top result.
+	-- Escape clears it, the small x clears it, Enter just leaves the box.
 	---------------------------------------------------------------------
 	local searchQuery = ""
 	local searchBox = nil
-	local searchPill = nil
 
 	local function onSearch(query)
 		for i = 1, #searchCbs do
@@ -852,7 +837,6 @@ function UI.new(opts)
 			ZIndex = 12,
 		}, pill)
 		searchBox = box
-		searchPill = pill
 
 		-- clicking the magnifier also puts the cursor in the box
 		local iconHit = new("TextButton", {
@@ -1133,269 +1117,6 @@ function UI.new(opts)
 	end
 
 	---------------------------------------------------------------------
-	-- SEARCH RESULTS: typing in the search box lists the best 3 features that match, right under it.
-	-- Find (click a row, or press Enter for the top one) switches to that feature's tab and calls its go().
-	-- Features are added with win:AddSearch (every tab is findable by name already).
-	---------------------------------------------------------------------
-	local searchIndex = {}   -- { title, tab, keywords, go, owner }
-	for i = 1, #TABS do
-		searchIndex[#searchIndex + 1] = { title = TABS[i].title .. " tab", tab = TABS[i].id, keywords = "page tab" }
-	end
-
-	do
-		local ROW = 34
-		local MAX_ROWS = 3          -- never more than three results
-		local PAD = 4
-		local ROW_GAP = 2
-		local DROP_W = 260          -- same width as the search pill
-		local PILL_H = 32
-		local wantOpen = false
-		local topEntry = nil
-		local rows = {}
-
-		-- the list is a child of the WINDOW, hanging right under the search pill. That way it always sits
-		-- under the search bar, moves, scales and fades with the window and can never drift away from it.
-		local drop = new("Frame", {
-			Name = "SearchResults",
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0, BAR_H / 2 + PILL_H / 2 + 6),
-			Size = UDim2.fromOffset(DROP_W, ROW + PAD * 2),
-			BackgroundColor3 = T.POPUP_BG,
-			BorderSizePixel = 0,
-			Visible = false,
-			ZIndex = 90,
-		}, window)
-		corner(drop, 10)
-		stroke(drop, BORDER, 1, 0)
-
-		local function closeDrop()
-			wantOpen = false
-			drop.Visible = false
-		end
-
-		local function findEntry(e)
-			closeDrop()
-			if searchBox then
-				searchBox:ReleaseFocus()
-				searchBox.Text = ""
-			end
-			showTab(e.tab)
-			if type(e.go) == "function" then
-				task.delay(0.25, function()
-					if alive then
-						pcall(e.go)
-					end
-				end)
-			end
-		end
-
-		-- how well a feature matches what was typed (0 = not at all)
-		local function score(e, q)
-			local title = string.lower(e.title)
-			local hay = title .. " " .. string.lower(e.keywords or "") .. " " .. string.lower(e.tab)
-			if title == q then
-				return 100
-			end
-			if string.sub(title, 1, #q) == q then
-				return 80
-			end
-			if string.find(title, " " .. q, 1, true) then
-				return 70
-			end
-			if string.find(title, q, 1, true) then
-				return 60
-			end
-			if string.find(hay, q, 1, true) then
-				return 40
-			end
-			local all = true
-			local any = false
-			for word in string.gmatch(q, "%S+") do
-				if string.find(hay, word, 1, true) then
-					any = true
-				else
-					all = false
-				end
-			end
-			if all and any then
-				return 30
-			end
-			-- letters in order: "wlkspd" finds "walk speed"
-			if #q >= 2 then
-				local pos = 1
-				local okSeq = true
-				for i = 1, #q do
-					local ch = string.sub(q, i, i)
-					if ch ~= " " then
-						local f = string.find(title, ch, pos, true)
-						if not f then
-							okSeq = false
-							break
-						end
-						pos = f + 1
-					end
-				end
-				if okSeq then
-					return 10
-				end
-			end
-			return 0
-		end
-
-		local function refresh(query)
-			for i = 1, #rows do
-				rows[i]:Destroy()
-			end
-			rows = {}
-			topEntry = nil
-			local q = string.lower((string.gsub(query or "", "^%s*(.-)%s*$", "%1")))
-			if q == "" then
-				closeDrop()
-				return
-			end
-
-			local found = {}
-			for i = 1, #searchIndex do
-				local s = score(searchIndex[i], q)
-				if s > 0 then
-					found[#found + 1] = { e = searchIndex[i], s = s }
-				end
-			end
-			table.sort(found, function(a, b)
-				if a.s ~= b.s then
-					return a.s > b.s
-				end
-				return a.e.title < b.e.title
-			end)
-
-			local n = math.min(#found, MAX_ROWS)
-			if n == 0 then
-				local r = new("Frame", {
-					Position = UDim2.fromOffset(PAD, PAD),
-					Size = UDim2.new(1, -PAD * 2, 0, ROW),
-					BackgroundTransparency = 1,
-					ZIndex = 92,
-				}, drop)
-				label(r, "No feature found", UDim2.fromOffset(10, 0), UDim2.new(1, -20, 1, 0),
-					Enum.Font.GothamMedium, 12, DIM_TEXT).ZIndex = 93
-				rows[1] = r
-				n = 1
-			else
-				topEntry = found[1].e
-				for i = 1, n do
-					local e = found[i].e
-					local row = new("Frame", {
-						Position = UDim2.fromOffset(PAD, PAD + (i - 1) * (ROW + ROW_GAP)),
-						Size = UDim2.new(1, -PAD * 2, 0, ROW),
-						BackgroundColor3 = HOVER_GREY,
-						BackgroundTransparency = 1,
-						BorderSizePixel = 0,
-						ZIndex = 92,
-					}, drop)
-					corner(row, 7)
-					-- name on top, the tab it lives on underneath
-					label(row, e.title, UDim2.fromOffset(10, 3), UDim2.new(1, -80, 0, 16),
-						Enum.Font.GothamMedium, 13, TEXT_COLOR).ZIndex = 93
-					label(row, e.tab, UDim2.fromOffset(10, 19), UDim2.new(1, -80, 0, 12),
-						Enum.Font.Gotham, 10, DIM_TEXT).ZIndex = 93
-					local tag = new("TextLabel", {
-						AnchorPoint = Vector2.new(1, 0.5),
-						Position = UDim2.new(1, -8, 0.5, 0),
-						Size = UDim2.fromOffset(48, 22),
-						BackgroundColor3 = WELL,
-						BorderSizePixel = 0,
-						Font = Enum.Font.GothamMedium,
-						Text = "Find",
-						TextSize = 11,
-						TextColor3 = ICON,
-						ZIndex = 93,
-					}, row)
-					corner(tag, 6)
-					local tagLine = stroke(tag, BORDER, 1, 0)
-					-- one invisible button covers the WHOLE row (name, tab and the Find tag), so clicking
-					-- anywhere on the row opens the feature. It reacts on the press, not on the release, so a
-					-- moving layout (touch keyboard closing, the box losing focus) cannot make it miss.
-					local hit = new("TextButton", {
-						AutoButtonColor = false,
-						Text = "",
-						BackgroundTransparency = 1,
-						Size = UDim2.fromScale(1, 1),
-						ZIndex = 96,
-					}, row)
-					local picked = false
-					local function pick()
-						if picked then
-							return
-						end
-						picked = true
-						findEntry(e)
-					end
-					hit.InputBegan:Connect(function(input)
-						if input.UserInputType == Enum.UserInputType.MouseButton1
-							or input.UserInputType == Enum.UserInputType.Touch then
-							pick()
-						end
-					end)
-					hit.Activated:Connect(pick)
-					hit.MouseEnter:Connect(function()
-						TweenService:Create(row, FAST, { BackgroundTransparency = 0.55 }):Play()
-						TweenService:Create(tagLine, FAST, { Color = CALM_RED }):Play()
-						TweenService:Create(tag, FAST, { TextColor3 = ICON_HOVER }):Play()
-					end)
-					hit.MouseLeave:Connect(function()
-						TweenService:Create(row, FAST, { BackgroundTransparency = 1 }):Play()
-						TweenService:Create(tagLine, FAST, { Color = BORDER }):Play()
-						TweenService:Create(tag, FAST, { TextColor3 = ICON }):Play()
-					end)
-					rows[i] = row
-				end
-			end
-
-			-- the box is exactly as tall as the rows that are in it
-			drop.Size = UDim2.fromOffset(DROP_W, n * ROW + (n - 1) * ROW_GAP + PAD * 2)
-			drop.Visible = true
-			wantOpen = true
-		end
-
-		searchCbs[#searchCbs + 1] = refresh
-		searchBox.Focused:Connect(function()
-			refresh(searchQuery)
-		end)
-		searchBox.FocusLost:Connect(function(enterPressed)
-			if enterPressed and wantOpen and topEntry then
-				findEntry(topEntry)
-			end
-		end)
-
-		-- the window hides / minimizes: the list goes with it
-		window:GetPropertyChangedSignal("Visible"):Connect(function()
-			if not window.Visible then
-				closeDrop()
-			end
-		end)
-
-		-- a click anywhere else closes it
-		table.insert(conns, UserInputService.InputBegan:Connect(function(input)
-			if not wantOpen then
-				return
-			end
-			if input.UserInputType ~= Enum.UserInputType.MouseButton1
-				and input.UserInputType ~= Enum.UserInputType.Touch then
-				return
-			end
-			local inset = GuiService:GetGuiInset()
-			local p = Vector2.new(input.Position.X + inset.X, input.Position.Y + inset.Y)
-			local function inside(g)
-				local a = g.AbsolutePosition
-				local s = g.AbsoluteSize
-				return p.X >= a.X and p.X <= a.X + s.X and p.Y >= a.Y and p.Y <= a.Y + s.Y
-			end
-			if not inside(drop) and not (searchPill and inside(searchPill)) then
-				closeDrop()
-			end
-		end))
-	end
-	---------------------------------------------------------------------
 	-- KEYBINDS PANEL (small card that spawns at the top left of the main window, top edges level)
 	--   * drag it by its title bar; it stays where you put it
 	--   * opens / closes with the keyboard button in the top bar (left of minimize) and closes with its x
@@ -1404,8 +1125,7 @@ function UI.new(opts)
 	--         default = { kind = "Key", key = Enum.KeyCode.E } })      (or pass opts.Binds when creating the window)
 	--     and read with  win:IsBind(id, input)  /  win:GetBind(id)
 	--   * modules you can turn on / off are added with win:AddToggle (or opts.Toggles). They get the same row
-	--     and their key flips them on / off. See the MODULE TOGGLES notes at the top.
-	--   * live rows (win:SetHint) show features that are running right now and disappear when they stop
+	--     plus a status dot, and their key flips them on / off. See the MODULE TOGGLES notes at the top.
 	---------------------------------------------------------------------
 	local BINDS = {}
 	local bindDef = {}
@@ -1449,6 +1169,7 @@ function UI.new(opts)
 	local kbToken = 0
 	local kbPills = {}
 	local kbLines = {}
+	local kbDots = {}           -- [id] = the on / off dot of a toggle row
 
 	local kbPanel = new("CanvasGroup", {
 		Name = "Keybinds",
@@ -1523,13 +1244,13 @@ function UI.new(opts)
 	kbEmpty.ZIndex = 3
 
 	---------------------------------------------------------------------
-	-- LIVE ROWS: a feature that is RUNNING shows up here (name on the left, its key as a small key cap on the
-	-- right) and disappears again when it stops. Rows sit under the plain bind rows.
+	-- LIVE ROWS: a module that is switched ON shows up here (name on the left, its key as a small key cap on the
+	-- right) and disappears again when it is switched off. Rows sit under the plain bind rows.
 	--   win:SetHint(id, { title = "Jump Power", key = "E", active = true })   -- add / update
 	--   win:SetHint(id, nil)                                                  -- remove
 	---------------------------------------------------------------------
-	local hints = {}        -- [id] = { frame, name, cap }
-	local hintOrder = {}    -- ids in the order they started
+	local hints = {}        -- [id] = { frame, dot, name, cap }
+	local hintOrder = {}    -- ids in the order they were switched on
 
 	-- puts every row in place and sizes the panel to fit
 	local function kbLayout()
@@ -1553,7 +1274,16 @@ function UI.new(opts)
 		}, kbPanel)
 		corner(frame, 6)
 		stroke(frame, BORDER, 1, 0.45)
-		local name = label(frame, "", UDim2.fromOffset(12, 0), UDim2.new(1, -72, 1, 0),
+		local dot = new("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 11, 0.5, 0),
+			Size = UDim2.fromOffset(7, 7),
+			BackgroundColor3 = DIM_TEXT,
+			BorderSizePixel = 0,
+			ZIndex = 4,
+		}, frame)
+		corner(dot, 100)
+		local name = label(frame, "", UDim2.fromOffset(26, 0), UDim2.new(1, -86, 1, 0),
 			Enum.Font.GothamMedium, 13, TEXT_COLOR)
 		name.ZIndex = 4
 		local cap = new("TextLabel", {
@@ -1573,7 +1303,7 @@ function UI.new(opts)
 		new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }, cap)
 		new("UISizeConstraint", { MinSize = Vector2.new(28, 20) }, cap)
 		stroke(cap, BORDER, 1, 0)
-		return { frame = frame, name = name, cap = cap }
+		return { frame = frame, dot = dot, name = name, cap = cap }
 	end
 
 	local function setHint(id, info)
@@ -1615,17 +1345,26 @@ function UI.new(opts)
 		else
 			h.cap.TextColor3 = ICON_HOVER
 		end
+		local dotColor = DIM_TEXT
+		if info.active then
+			dotColor = ON_GREEN
+		end
 
 		if isNew then
+			h.dot.BackgroundColor3 = dotColor
 			kbLayout()
 			-- fade the new row in
 			h.frame.BackgroundTransparency = 1
+			h.dot.BackgroundTransparency = 1
 			h.name.TextTransparency = 1
 			h.cap.BackgroundTransparency = 1
 			h.cap.TextTransparency = 1
 			TweenService:Create(h.frame, SMOOTH, { BackgroundTransparency = 0 }):Play()
+			TweenService:Create(h.dot, SMOOTH, { BackgroundTransparency = 0 }):Play()
 			TweenService:Create(h.name, SMOOTH, { TextTransparency = 0 }):Play()
 			TweenService:Create(h.cap, SMOOTH, { BackgroundTransparency = 0, TextTransparency = 0 }):Play()
+		else
+			TweenService:Create(h.dot, FAST, { BackgroundColor3 = dotColor }):Play()
 		end
 	end
 
@@ -1731,6 +1470,7 @@ function UI.new(opts)
 	end
 
 	-- adds a row to the panel (safe to call any time, a second call with the same id does nothing)
+	-- def.toggle = true adds the small on / off dot in front of the name (win:AddToggle does this for you)
 	local function addBind(def)
 		if type(def) ~= "table" or type(def.id) ~= "string" or bindDef[def.id] then
 			return
@@ -1747,6 +1487,20 @@ function UI.new(opts)
 		end
 
 		local nameX = 16
+		if def.toggle then
+			nameX = 32
+			local dot = new("Frame", {
+				Name = def.id .. "Dot",
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.fromOffset(16, y + (KB_ROW - 4) / 2),
+				Size = UDim2.fromOffset(8, 8),
+				BackgroundColor3 = DIM_TEXT,
+				BorderSizePixel = 0,
+				ZIndex = 3,
+			}, kbPanel)
+			corner(dot, 100)
+			kbDots[def.id] = dot
+		end
 		label(kbPanel, tostring(def.title or def.id), UDim2.fromOffset(nameX, y), UDim2.new(1, -(nameX + 114), 0, KB_ROW - 4),
 			Enum.Font.GothamMedium, 13, nameColor).ZIndex = 3
 
@@ -1843,9 +1597,21 @@ function UI.new(opts)
 
 	---------------------------------------------------------------------
 	-- MODULE TOGGLES: every module you can turn on / off (Trigger Bot, Aimbot, ESP ...) shows up in the
-	-- keybinds panel with its key. Its key flips it.
+	-- keybinds panel with a status dot (grey = off, green = on). Its key flips it.
 	---------------------------------------------------------------------
 	local toggles = {}   -- [id] = { def = def, on = bool, listeners = { fn(on) } }
+
+	local function paintDot(id)
+		local d = kbDots[id]
+		if not d then
+			return
+		end
+		local c = DIM_TEXT
+		if toggles[id] and toggles[id].on then
+			c = ON_GREEN
+		end
+		TweenService:Create(d, FAST, { BackgroundColor3 = c }):Play()
+	end
 
 	-- sets a toggle. silent = true skips the toast (used when the module's own switch changed it)
 	local function setToggle(id, on, silent)
@@ -1858,6 +1624,7 @@ function UI.new(opts)
 			return
 		end
 		t.on = on
+		paintDot(id)
 		if type(t.def.onToggle) == "function" then
 			pcall(t.def.onToggle, on)
 		end
@@ -1873,7 +1640,7 @@ function UI.new(opts)
 		end
 	end
 
-	-- registers a module: adds its keybind row and makes the key flip it
+	-- registers a module: adds its keybind row (with the dot) and makes the key flip it
 	local function addToggle(def)
 		if type(def) ~= "table" or type(def.id) ~= "string" or toggles[def.id] then
 			return
@@ -1884,6 +1651,7 @@ function UI.new(opts)
 			title = def.title or def.id,
 			wired = (def.wired ~= false),
 			default = def.default,
+			toggle = true,
 		})
 		if def.enabled then
 			setToggle(def.id, true, true)
@@ -2356,7 +2124,7 @@ function UI.new(opts)
 				return
 			end
 			hidden = hide
-			kbSetSuppressed(hide)
+			-- the Keybinds panel stays up while the window is hidden; it only goes away with its own hide button
 			animToken = animToken + 1
 			local tk = animToken
 			if hide then
@@ -2758,43 +2526,6 @@ function UI.new(opts)
 	function win:GetPage(id)
 		return containers[id or currentTab]
 	end
-
-	-- makes a feature findable from the search box:
-	--   win:AddSearch({ owner = "Misc", title = "Walk Speed", tab = "Misc", keywords = "speed run", go = function() end })
-	-- Find switches to that tab and then calls go() (scroll to it, flash it ...)
-	function win:AddSearch(def)
-		if type(def) ~= "table" or type(def.title) ~= "string" or not tabById[def.tab] then
-			return
-		end
-		for i = 1, #searchIndex do
-			local e = searchIndex[i]
-			if e.title == def.title and e.tab == def.tab then
-				e.go = def.go
-				e.keywords = def.keywords or e.keywords
-				e.owner = def.owner or e.owner
-				return
-			end
-		end
-		searchIndex[#searchIndex + 1] = {
-			title = def.title,
-			tab = def.tab,
-			keywords = def.keywords or "",
-			go = def.go,
-			owner = def.owner,
-		}
-	end
-	-- removes every search entry a module added (call it from the module's Unload)
-	function win:RemoveSearch(owner)
-		if owner == nil then
-			return
-		end
-		for i = #searchIndex, 1, -1 do
-			if searchIndex[i].owner == owner then
-				table.remove(searchIndex, i)
-			end
-		end
-	end
-
 	function win:OnSearch(fn)
 		if type(fn) == "function" then
 			searchCbs[#searchCbs + 1] = fn
@@ -2818,7 +2549,7 @@ function UI.new(opts)
 		return bindName(binds[id])
 	end
 
-	-- live rows in the Keybinds panel: shown while a feature is running (see LIVE ROWS above)
+	-- live rows in the Keybinds panel: shown while a module is switched on (see LIVE ROWS above)
 	--   win:SetHint("JumpPower", { title = "Jump Power", key = "E", active = true })   win:SetHint("JumpPower", nil)
 	function win:SetHint(id, info)
 		setHint(id, info)
