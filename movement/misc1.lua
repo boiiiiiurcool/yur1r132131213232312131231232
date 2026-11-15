@@ -41,13 +41,14 @@
 
 local Misc1 = {}
 
--- h = height of the panel as a share of the page (all three panels use the same height)
+-- tall = the panel runs down to the bottom of the page (level with the Main | Extras bar).
+-- The middle panel is not tall, because the Main | Extras bar sits under it.
 local PANELS = {
-	{ id = "Movement",  title = "Movement",   h = 0.96, icon = "chevrons",
+	{ id = "Movement",  title = "Movement",   tall = true,  icon = "chevrons",
 		ids = { "walkspeed", "jumppower", "infjump", "fly", "gravity" } },
-	{ id = "Extras",    title = "Extras",     h = 0.96, icon = "plus",
+	{ id = "Extras",    title = "Extras",     tall = false, icon = "plus",
 		ids = { "tickrate", "bhop", "noclip", "spider", "float" } },
-	{ id = "ZhdExtras", title = "Zhd extras", h = 0.96, icon = "diamond",
+	{ id = "ZhdExtras", title = "Zhd extras", tall = true,  icon = "diamond",
 		ids = { "noslow", "nojumpcd" } },
 }
 
@@ -174,15 +175,21 @@ function Misc1.build(container, T, H, ctx)
 	end
 
 	local bodies = {}
+	local badges = {}
 	local count = #PANELS
 
 	for i = 1, count do
 		local def = PANELS[i]
 
+		-- the side panels get the height of the switcher bar added, so their bottoms are level with it
+		local extraH = 0
+		if def.tall then
+			extraH = SW_H + SW_GAP
+		end
 		local panel = new("Frame", {
 			Name = def.id .. "Panel",
 			LayoutOrder = i,
-			Size = UDim2.new(1 / count, -(GAP * (count - 1)) / count, def.h, 0),
+			Size = UDim2.new(1 / count, -(GAP * (count - 1)) / count, 1, extraH),
 			BackgroundColor3 = T.SIDEBAR_BG,
 			BorderSizePixel = 0,
 			ClipsDescendants = true,
@@ -192,8 +199,25 @@ function Misc1.build(container, T, H, ctx)
 
 		-- title bar
 		headerIcon(panel, def.icon)
-		label(panel, def.title, UDim2.fromOffset(40, 0), UDim2.new(1, -54, 0, HEAD),
+		label(panel, def.title, UDim2.fromOffset(40, 0), UDim2.new(1, -108, 0, HEAD),
 			Enum.Font.GothamBold, 14, T.TEXT_COLOR).ZIndex = 3
+
+		-- badge on the right of the title: how many options are ON out of how many the panel has (for example 2/5)
+		local badge = new("Frame", {
+			Name = "Badge",
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, -12, 0, HEAD / 2),
+			Size = UDim2.fromOffset(46, 20),
+			BackgroundColor3 = T.CLUSTER_BG,
+			BorderSizePixel = 0,
+			ZIndex = 3,
+		}, panel)
+		corner(badge, 10)
+		local badgeLine = stroke(badge, T.BORDER, 1, 0)
+		local badgeText = label(badge, "0/" .. tostring(#def.ids), UDim2.fromScale(0, 0), UDim2.fromScale(1, 1),
+			Enum.Font.GothamMedium, 11, T.DIM_TEXT, Enum.TextXAlignment.Center)
+		badgeText.ZIndex = 4
+		badges[def.id] = { text = badgeText, line = badgeLine, total = #def.ids }
 
 		-- thin red line under the title
 		new("Frame", {
@@ -361,9 +385,35 @@ function Misc1.build(container, T, H, ctx)
 		end
 	end
 
+	-- the 2/5 badge of every panel: how many of its options are switched on
+	local function refreshBadges()
+		for pi = 1, #PANELS do
+			local pdef = PANELS[pi]
+			local b = badges[pdef.id]
+			if b then
+				local on = 0
+				for k = 1, #pdef.ids do
+					if F[pdef.ids[k]].enabled then
+						on = on + 1
+					end
+				end
+				b.text.Text = tostring(on) .. "/" .. tostring(b.total)
+				local textColor = T.DIM_TEXT
+				local lineColor = T.BORDER
+				if on > 0 then
+					textColor = T.ACCENT
+					lineColor = T.ACCENT
+				end
+				TweenService:Create(b.text, FAST, { TextColor3 = textColor }):Play()
+				TweenService:Create(b.line, FAST, { Color = lineColor }):Play()
+			end
+		end
+	end
+
 	-- called whenever the switch, the mode or the key of a feature changes
 	local function paintStatus(f)
 		syncHint(f)
+		refreshBadges()
 	end
 
 	---------------------------------------------------------------------
