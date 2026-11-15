@@ -1,26 +1,30 @@
--- pingspoofer
+-- spoofer2.lua  (Y1 Misc > Extras > Quality Of Life: the Ping Spoofer)
+-- ASCII only, conservative syntax (no += and no continue).
+--
+-- This is the old pingspoofer.lua with the look of the Extras page: a name + switch on top and one inset box under it
+-- with the Ping / Jitter / Speed sliders and the live readouts. No pop-up, no three dots.
+--
+-- ONE METHOD: value override. Every place the ping is READ or DRAWN gets your number instead of the real one:
+--   1) Performance Stats overlay (Esc > Settings): every Ping number in CoreGui is rewritten (text, graph, dot).
+--   2) StatsItem:GetValue / GetValueString for "Data Ping" / "Ping" and Player:GetNetworkPing() (scripts).
+-- It only changes what this client reports. It does not touch your real connection.
+-- Needs CoreGui access (overlay) and hookmetamethod + newcclosure + getnamecallmethod (scripts); the box says which part
+-- is not active.  Jitter: +/- 0..100 ms, random ups and drops. Speed: 1 (slow) .. 10 (fast) = how often it jumps.
+--
+-- Build signature: Spoofer.build(parent, T, H, ctx) -> { Root = frame, Box = settings box, Unload = fn }
 
-local PingSpoofer = {}
+local Spoofer = {}
 
-function PingSpoofer.build(parent, T, H, ctx)
+function Spoofer.build(parent, T, H, ctx)
 	local Players = game:GetService("Players")
 	local UserInputService = game:GetService("UserInputService")
 	local RunService = game:GetService("RunService")
+	local TweenService = game:GetService("TweenService")
 	local Stats = game:GetService("Stats")
 	local player = Players.LocalPlayer
 
 	local new, corner, stroke, label = H.new, H.corner, H.stroke, H.label
-
-	local X = nil
-	local R = nil
-	if type(ctx) == "table" then
-		X = ctx.Helpers
-		R = ctx.Rows
-	end
-	if type(X) ~= "table" or type(R) ~= "table" or typeof(R.ping) ~= "Instance" then
-		warn("[pingspoofer] extra.lua did not pass its helpers / the ping row")
-		return { Unload = function() end }
-	end
+	local TITLE = "Ping Spoofer"
 
 	local GREEN = Color3.fromRGB(52, 199, 120)
 	local AMBER = Color3.fromRGB(232, 176, 70)
@@ -646,29 +650,203 @@ function PingSpoofer.build(parent, T, H, ctx)
 		prefillHistory(math.max(1, shown))
 	end
 
-	---------------------------------------------------------------------
-	-- the row (Quality Of Life, row 3) + settings pop-up
-	---------------------------------------------------------------------
-	-- everything this module puts on the row lives in one holder, so unloading removes exactly that
+	-- layout (same numbers as the Main page of misc1.lua / extra2.lua)
+	local HEADER_H = 28
+	local BOX_PAD = 10
+	local BOX_GAP = 9
+	local ROW_H = 28
+	local SLIDER_H = 38
+	local FAST = T.FAST
+	local SMOOTH = T.SMOOTH
+
+	-- one section: name + switch on top, one inset box (the settings) under it
 	local holder = new("Frame", {
-		Name = "PingSpooferHolder",
-		Size = UDim2.fromScale(1, 1),
+		Name = "SpooferHolder",
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-	}, R.ping)
+	}, parent)
+	new("UIListLayout", {
+		FillDirection = Enum.FillDirection.Vertical,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 12),
+	}, holder)
 
-	local sub = X.rowHead(holder, "Ping Spoofer")
+	local head = new("Frame", {
+		Name = "Header",
+		LayoutOrder = 1,
+		Size = UDim2.new(1, 0, 0, HEADER_H),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+	}, holder)
+	label(head, TITLE, UDim2.fromOffset(2, 0), UDim2.new(1, -56, 1, 0),
+		Enum.Font.GothamBold, 14, T.TEXT_COLOR)
 
-	local function refreshSub()
-		local state = '<font color="rgb(116,116,124)">Off</font>'
-		if S.on then
-			state = '<font color="rgb(52,199,120)">Active</font>'
-		end
-		sub.Text = state
+	local function makeSwitch(row, onChange)
+		local on = false
+		local track = new("TextButton", {
+			AutoButtonColor = false,
+			Text = "",
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, 0, 0.5, 0),
+			Size = UDim2.fromOffset(38, 20),
+			BackgroundColor3 = T.CLUSTER_BG,
+			BorderSizePixel = 0,
+		}, row)
+		corner(track, 100)
+		stroke(track, T.BORDER, 1, 0)
+		local knob = new("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 3, 0.5, 0),
+			Size = UDim2.fromOffset(14, 14),
+			BackgroundColor3 = T.DIM_TEXT,
+			BorderSizePixel = 0,
+		}, track)
+		corner(knob, 100)
+		track.Activated:Connect(function()
+			on = not on
+			local pos = UDim2.new(0, 3, 0.5, 0)
+			local tc = T.CLUSTER_BG
+			local kc = T.DIM_TEXT
+			if on then
+				pos = UDim2.new(0, 21, 0.5, 0)
+				tc = T.JOIN_BG
+				kc = T.BLACK
+			end
+			TweenService:Create(knob, SMOOTH, { Position = pos }):Play()
+			TweenService:Create(knob, FAST, { BackgroundColor3 = kc }):Play()
+			TweenService:Create(track, FAST, { BackgroundColor3 = tc }):Play()
+			onChange(on)
+		end)
 	end
-	refreshSub()
 
-	X.makeSwitch(holder, false, function(on)
+	local box = new("Frame", {
+		Name = "Settings",
+		LayoutOrder = 2,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundColor3 = T.WELL,
+		BorderSizePixel = 0,
+	}, holder)
+	corner(box, 6)
+	stroke(box, T.BORDER, 1, 0)
+	new("UIPadding", {
+		PaddingLeft = UDim.new(0, BOX_PAD),
+		PaddingRight = UDim.new(0, BOX_PAD),
+		PaddingTop = UDim.new(0, BOX_PAD),
+		PaddingBottom = UDim.new(0, BOX_PAD),
+	}, box)
+	new("UIListLayout", {
+		FillDirection = Enum.FillDirection.Vertical,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, BOX_GAP),
+	}, box)
+	local boxN = 0
+	local function nextOrder()
+		boxN = boxN + 1
+		return boxN
+	end
+
+	-- a wrapped line of small text
+	local function makeNote(text, color)
+		local n = label(box, text, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 0),
+			Enum.Font.Gotham, 11, color or T.DIM_TEXT)
+		n.LayoutOrder = nextOrder()
+		n.TextWrapped = true
+		n.TextTruncate = Enum.TextTruncate.None
+		n.TextYAlignment = Enum.TextYAlignment.Top
+		n.AutomaticSize = Enum.AutomaticSize.Y
+		return n
+	end
+
+	-- slider (same look as the other pages): name left, value right, red bar with a white handle
+	local dragObj = nil
+	local function makeSlider(name, minV, maxV, stepV, fmt, get, set)
+		local row = new("Frame", {
+			Name = name .. "Slider",
+			LayoutOrder = nextOrder(),
+			Size = UDim2.new(1, 0, 0, SLIDER_H),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, box)
+		label(row, name, UDim2.fromOffset(0, 0), UDim2.new(0.6, 0, 0, 18), Enum.Font.GothamMedium, 12, T.TEXT_COLOR)
+		local valLbl = label(row, "", UDim2.new(0.6, 0, 0, 0), UDim2.new(0.4, 0, 0, 18),
+			Enum.Font.GothamMedium, 12, T.DIM_TEXT, Enum.TextXAlignment.Right)
+		local track = new("Frame", {
+			Position = UDim2.fromOffset(3, 27),
+			Size = UDim2.new(1, -6, 0, 6),
+			BackgroundColor3 = T.BORDER,
+			BorderSizePixel = 0,
+		}, row)
+		corner(track, 3)
+		local fill = new("Frame", {
+			Size = UDim2.new(0, 0, 1, 0),
+			BackgroundColor3 = T.ACCENT,
+			BorderSizePixel = 0,
+		}, track)
+		corner(fill, 3)
+		local knob = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0, 0, 0.5, 0),
+			Size = UDim2.fromOffset(6, 14),
+			BackgroundColor3 = T.ICON_HOVER,
+			BorderSizePixel = 0,
+			ZIndex = 2,
+		}, track)
+		corner(knob, 2)
+		local hit = new("TextButton", {
+			AutoButtonColor = false,
+			Text = "",
+			Position = UDim2.fromOffset(0, 18),
+			Size = UDim2.new(1, 0, 0, 20),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			ZIndex = 3,
+		}, row)
+		local function refresh()
+			local v = get()
+			local f = math.clamp((v - minV) / (maxV - minV), 0, 1)
+			fill.Size = UDim2.new(f, 0, 1, 0)
+			knob.Position = UDim2.new(f, 0, 0.5, 0)
+			valLbl.Text = string.format(fmt, v)
+		end
+		local obj = {}
+		function obj.drag(input)
+			local w = track.AbsoluteSize.X
+			if w <= 0 then
+				return
+			end
+			local f = math.clamp((input.Position.X - track.AbsolutePosition.X) / w, 0, 1)
+			local v = minV + math.floor(f * (maxV - minV) / stepV + 0.5) * stepV
+			set(math.clamp(v, minV, maxV))
+			refresh()
+		end
+		hit.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.Touch then
+				dragObj = obj
+				obj.drag(input)
+			end
+		end)
+		refresh()
+	end
+	conns[#conns + 1] = UserInputService.InputChanged:Connect(function(input)
+		if dragObj and (input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch) then
+			dragObj.drag(input)
+		end
+	end)
+	conns[#conns + 1] = UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			dragObj = nil
+		end
+	end)
+
+	makeSwitch(head, function(on)
 		S.on = on
 		shared.on = on
 		if on then
@@ -678,135 +856,24 @@ function PingSpoofer.build(parent, T, H, ctx)
 		else
 			clearLabels()
 		end
-		refreshSub()
-	end, 23)
+	end)
 
-	local dotsBtn = X.makeDots(holder, UDim2.new(1, -58, 0, 23))
+	makeSlider("Ping", 0, 1000, 5, "%d ms", function() return S.ping end, function(v) S.ping = v end)
+	makeSlider("Jitter", 0, 100, 1, "+/- %d", function() return S.jitter end, function(v) S.jitter = v end)
+	makeSlider("Speed", 1, 10, 1, "%d", function() return S.jitterSpeed end, function(v) S.jitterSpeed = v end)
 
-	local PW = 290
-	local PH = 268
-	local F = X.makeFloating("PingSpooferSettings", PW, PH)
-	local pop = F.frame
-
-	label(pop, "Ping Spoofer", UDim2.fromOffset(16, 12), UDim2.new(1, -32, 0, 20),
-		Enum.Font.GothamBold, 14, T.TEXT_COLOR)
-	new("Frame", {
-		Position = UDim2.fromOffset(16, 40),
-		Size = UDim2.new(1, -32, 0, 1),
+	local line = new("Frame", {
+		LayoutOrder = nextOrder(),
+		Size = UDim2.new(1, 0, 0, 1),
 		BackgroundColor3 = T.BORDER,
 		BorderSizePixel = 0,
-	}, pop)
+	}, box)
 
-	local function makeSlider(c, y, name, labelW, minV, maxV, stepV, startValue, fmt, setValue)
-		label(c, name, UDim2.fromOffset(16, y), UDim2.fromOffset(labelW, 20),
-			Enum.Font.GothamMedium, 12, T.ICON)
-		local valueLabel = label(c, "", UDim2.new(1, -76, 0, y), UDim2.fromOffset(60, 20),
-			Enum.Font.GothamMedium, 12, T.TEXT_COLOR, Enum.TextXAlignment.Right)
-		local x0 = 16 + labelW + 6
-
-		local track = new("Frame", {
-			Position = UDim2.fromOffset(x0, y + 7),
-			Size = UDim2.new(1, -(x0 + 82), 0, 6),
-			BackgroundColor3 = T.CLUSTER_BG,
-			BorderSizePixel = 0,
-		}, c)
-		corner(track, 3)
-		local fill = new("Frame", {
-			Size = UDim2.new(0, 0, 1, 0),
-			BackgroundColor3 = T.ICON_HOVER,
-			BorderSizePixel = 0,
-		}, track)
-		corner(fill, 3)
-		local knob = new("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0, 0, 0.5, 0),
-			Size = UDim2.fromOffset(12, 12),
-			BackgroundColor3 = T.ICON_HOVER,
-			BorderSizePixel = 0,
-		}, track)
-		corner(knob, 100)
-		local hitBtn = new("TextButton", {
-			AutoButtonColor = false,
-			Text = "",
-			Position = UDim2.fromOffset(x0, y),
-			Size = UDim2.new(1, -(x0 + 82), 0, 20),
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-		}, c)
-
-		local value = startValue
-		local dragging = false
-		local function refresh()
-			local f = math.clamp((value - minV) / (maxV - minV), 0, 1)
-			fill.Size = UDim2.new(f, 0, 1, 0)
-			knob.Position = UDim2.new(f, 0, 0.5, 0)
-			valueLabel.Text = string.format(fmt, value)
-		end
-		refresh()
-
-		local function setFromX(px)
-			local w = hitBtn.AbsoluteSize.X
-			if w <= 0 then
-				return
-			end
-			local f = math.clamp((px - hitBtn.AbsolutePosition.X) / w, 0, 1)
-			value = minV + math.floor(f * (maxV - minV) / stepV + 0.5) * stepV
-			value = math.clamp(value, minV, maxV)
-			setValue(value)
-			refresh()
-		end
-
-		hitBtn.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1
-				or input.UserInputType == Enum.UserInputType.Touch then
-				dragging = true
-				setFromX(input.Position.X)
-			end
-		end)
-		conns[#conns + 1] = UserInputService.InputChanged:Connect(function(input)
-			if not dragging then
-				return
-			end
-			if input.UserInputType == Enum.UserInputType.MouseMovement
-				or input.UserInputType == Enum.UserInputType.Touch then
-				setFromX(input.Position.X)
-			end
-		end)
-		conns[#conns + 1] = UserInputService.InputEnded:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1
-				or input.UserInputType == Enum.UserInputType.Touch then
-				dragging = false
-			end
-		end)
-	end
-
-	makeSlider(pop, 54, "Ping", 56, 0, 1000, 5, S.ping, "%d ms", function(v)
-		S.ping = v
-	end)
-	makeSlider(pop, 84, "Jitter", 56, 0, 100, 1, S.jitter, "+/- %d", function(v)
-		S.jitter = v
-	end)
-	makeSlider(pop, 114, "Speed", 56, 1, 10, 1, S.jitterSpeed, "%d", function(v)
-		S.jitterSpeed = v
-	end)
-
-	new("Frame", {
-		Position = UDim2.fromOffset(16, 150),
-		Size = UDim2.new(1, -32, 0, 1),
-		BackgroundColor3 = T.BORDER,
-		BorderSizePixel = 0,
-	}, pop)
-
-	local realLbl = label(pop, "Real ping: -", UDim2.fromOffset(16, 158), UDim2.new(1, -32, 0, 16),
-		Enum.Font.GothamMedium, 12, T.TEXT_COLOR)
-	local shownLbl = label(pop, "Shown ping: -", UDim2.fromOffset(16, 176), UDim2.new(1, -32, 0, 16),
-		Enum.Font.GothamMedium, 12, T.TEXT_COLOR)
-	local hookLbl = label(pop, "", UDim2.fromOffset(16, 202), UDim2.new(1, -32, 0, 14),
-		Enum.Font.Gotham, 11, T.DIM_TEXT)
-	local overLbl = label(pop, "", UDim2.fromOffset(16, 220), UDim2.new(1, -32, 0, 14),
-		Enum.Font.Gotham, 11, T.DIM_TEXT)
-	label(pop, "Esc > Settings > Performance Stats (not Shift+F3).", UDim2.fromOffset(16, 244),
-		UDim2.new(1, -32, 0, 14), Enum.Font.Gotham, 11, T.DIM_TEXT)
+	local realLbl = makeNote("Real ping: -", T.TEXT_COLOR)
+	local shownLbl = makeNote("Shown ping: -", T.TEXT_COLOR)
+	local hookLbl = makeNote("", T.DIM_TEXT)
+	local overLbl = makeNote("", T.DIM_TEXT)
+	makeNote("Esc > Settings > Performance Stats (not Shift+F3).", T.DIM_TEXT)
 
 	local function statusLines()
 		if canHook then
@@ -836,40 +903,6 @@ function PingSpoofer.build(parent, T, H, ctx)
 	end
 	statusLines()
 
-	local function openPing()
-		if F.isOpen() then
-			return
-		end
-		F.open(X.placeNear(dotsBtn.btn, PW, PH, nil))
-		dotsBtn.open = true
-		dotsBtn.paint()
-	end
-
-	local function closePing()
-		F.close()
-		dotsBtn.open = false
-		dotsBtn.paint()
-	end
-
-	dotsBtn.btn.Activated:Connect(function()
-		if F.isOpen() then
-			closePing()
-		else
-			openPing()
-		end
-	end)
-
-	X.addPopup({
-		isOpen = function()
-			return F.isOpen()
-		end,
-		close = closePing,
-		hit = { pop, dotsBtn.btn },
-	})
-
-	---------------------------------------------------------------------
-	-- loop: random jumps (ups and drops), overlay painting, readouts
-	---------------------------------------------------------------------
 	local acc = 0
 	local jacc = 0
 	local jnext = 1
@@ -905,7 +938,7 @@ function PingSpoofer.build(parent, T, H, ctx)
 		acc = acc + dt
 		if acc >= 0.25 then
 			acc = 0
-			if F.isOpen() then
+			if holder.Parent then
 				statusLines()
 				realLbl.Text = string.format("Real ping: %d ms", math.floor(readReal() + 0.5))
 				if S.on then
@@ -934,9 +967,6 @@ function PingSpoofer.build(parent, T, H, ctx)
 		end)
 	end)
 
-	---------------------------------------------------------------------
-	-- unload
-	---------------------------------------------------------------------
 	local function unload()
 		if not running then
 			return
@@ -952,12 +982,7 @@ function PingSpoofer.build(parent, T, H, ctx)
 		end
 		conns = {}
 		pcall(function()
-			F.close()
-		end)
-		-- the row itself belongs to extra.lua; only what this module added is removed
-		pcall(function()
 			holder:Destroy()
-			pop:Destroy()
 		end)
 		if okEnv and genv and genv.__Y1_PING_STOP == unload then
 			genv.__Y1_PING_STOP = nil
@@ -968,7 +993,7 @@ function PingSpoofer.build(parent, T, H, ctx)
 		genv.__Y1_PING_STOP = unload
 	end
 
-	return { Unload = unload }
+	return { Root = holder, Box = box, Unload = unload }
 end
 
-return PingSpoofer
+return Spoofer
