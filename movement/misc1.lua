@@ -289,8 +289,7 @@ function Misc1.build(container, T, H, ctx)
 			sliders = { { key = "power", name = "Power", min = 20, max = 500, step = 5, value = 100, fmt = "%d" } } },
 		{ id = "gravity", title = "Gravity",
 			sliders = { { key = "grav", name = "Gravity", min = 0, max = 400, step = 1, value = 60, fmt = "%d" } } },
-		{ id = "tickrate", title = "Tickrate",
-			note = capNote,
+		{ id = "tickrate", title = "Tickrate", disabled = true,
 			sliders = { { key = "rate", name = "Send Rate", min = 1, max = 1000, step = 1, value = 240, fmt = "%d" } } },
 		{ id = "bhop", title = "Bunny Hop",
 			sliders = {
@@ -334,7 +333,7 @@ function Misc1.build(container, T, H, ctx)
 	end
 
 	local function isActive(f)
-		if not f.enabled then
+		if f.def.disabled or not f.enabled then
 			return false
 		end
 		if f.mode == "Always" then
@@ -705,7 +704,7 @@ function Misc1.build(container, T, H, ctx)
 	---------------------------------------------------------------------
 	local function buildFeature(body, f, order)
 		local d = f.def
-		local sec = new("Frame", {
+		local outer = new("Frame", {
 			Name = d.id .. "Section",
 			LayoutOrder = order,
 			Size = UDim2.new(1, 0, 0, 0),
@@ -713,6 +712,13 @@ function Misc1.build(container, T, H, ctx)
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 		}, body)
+		local sec = new("Frame", {
+			Name = "Content",
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, outer)
 		new("UIListLayout", {
 			FillDirection = Enum.FillDirection.Vertical,
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
@@ -869,6 +875,31 @@ function Misc1.build(container, T, H, ctx)
 			end
 		end
 		applyShow()
+
+		-- DISABLED: a washed-out cover over the whole feature. It takes every click, so the switch, the key box,
+		-- the drop-downs and the sliders under it cannot be used.
+		if d.disabled then
+			local cover = new("Frame", {
+				Name = "DisabledCover",
+				Position = UDim2.fromOffset(0, 0),
+				Size = UDim2.fromOffset(0, 0),
+				BackgroundColor3 = T.SIDEBAR_BG,
+				BackgroundTransparency = 0.15,
+				BorderSizePixel = 0,
+				Active = true,
+				ZIndex = 20,
+			}, outer)
+			corner(cover, 6)
+			local tag = label(cover, "Disabled", UDim2.fromScale(0, 0), UDim2.fromScale(1, 1),
+				Enum.Font.GothamBold, 15, T.TEXT_COLOR, Enum.TextXAlignment.Center)
+			tag.ZIndex = 21
+			local function fit()
+				local a = sec.AbsoluteSize
+				cover.Size = UDim2.fromOffset(a.X, a.Y)
+			end
+			sec:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+			fit()
+		end
 
 		paintStatus(f)
 	end
