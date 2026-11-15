@@ -2,17 +2,14 @@
 -- ASCII only, conservative syntax (no += and no continue).
 --
 -- Loaded by main.lua, built by combat/aimbot.lua into its "Triggerbot" side:   Trigger.build(container, T, H, ctx)
--- The engine (createTriggerbot) is the same as before, plus two small hooks for the visualizer. Around it is a page
--- built like misc1.lua: three panels with a title bar and a red line, every option is a section: name + switch on top,
+-- The engine (createTriggerbot, your pasted code) is unchanged. Around it is a page built like misc1.lua: three panels with a title bar and a red line, every option is a section: name + switch on top,
 -- and one inset box with its settings (Keybind, Mode, drop-downs, sliders with a red bar).
 --
 --   Triggerbot panel : Triggerbot (switch, Keybind, Mode, Fire Method, Hit Part, Crosshair), Require Tool, Delay, Random Delay
 --   Checks panel     : Team Check, Forcefield Check, Health Check (Min Health), Knocked Check, Distance (Min / Max)
---   Tuning panel     : Hitbox ESP (boxes on every player), Auto Lead (Lead, Max Lead),
+--   Tuning panel     : Auto Lead (Lead, Max Lead),
 --                      Detection (Hitbox, Rings, Ring Rays, Los Rays, Max Candidates)
 --
--- HITBOX ESP: the switch draws the exact boxes the triggerbot tests (padding from the Hitbox slider, Hit Part filter,
---   lead offset) on EVERY player, through walls. The player the triggerbot is hitting turns red. Off at start.
 -- The switch of every section is OFF each time the script starts (the Triggerbot switch too). Mode:
 --   Always = armed while the switch is on     Toggle = the keybind arms / disarms it     Hold = armed only while the key is held
 -- KEYBINDS PANEL: while the triggerbot is armed it shows there ("Triggerbot" + its key).
@@ -144,7 +141,7 @@ local function createTriggerbot(userOpts)
 	local stateCbs = {}
 	local lastNote = ""
 
-	local det = { hit = false, stage = nil, rays = 0, candidates = 0, hitChar = nil }
+	local det = { hit = false, stage = nil, rays = 0, candidates = 0 }
 
 	local function notify()
 		local key = tostring(S.Enabled) .. tostring(armed) .. tostring(firing)
@@ -408,11 +405,7 @@ local function createTriggerbot(userOpts)
 		if d < S.MinDist or d > S.MaxDist then
 			return false
 		end
-		local ok = partAllowed(res.Instance)
-		if ok then
-			det.hitChar = model
-		end
-		return ok
+		return partAllowed(res.Instance)
 	end
 
 	local function seen(origin, point, char)
@@ -528,13 +521,11 @@ local function createTriggerbot(userOpts)
 							local studsPerPx = (2 * z * tanHalf) / vs.Y
 							local ahead = leadVector(info.root, lead)
 							local bound = (5 + ahead.Magnitude) / studsPerPx + tol * 2 + 12
-							local scr = Vector2.new(v.X, v.Y)
-							local off = (scr - ref).Magnitude
+							local off = (Vector2.new(v.X, v.Y) - ref).Magnitude
 							if off <= bound then
 								candBuf[#candBuf + 1] = {
 									info = info,
 									off = off,
-									scr = scr,
 									pad = tol * studsPerPx,
 									ahead = ahead,
 								}
@@ -606,7 +597,6 @@ local function createTriggerbot(userOpts)
 						local t = rayBox(origin, dir, cf, half)
 						if t ~= nil and t <= maxT then
 							if boxConfirmed(origin, dir, part, t, cand) then
-								det.hitChar = char
 								return true
 							end
 						end
@@ -647,7 +637,6 @@ local function createTriggerbot(userOpts)
 		det.stage = nil
 		det.rays = 0
 		det.candidates = 0
-		det.hitChar = nil
 		if not cam then
 			return
 		end
@@ -888,14 +877,8 @@ local function createTriggerbot(userOpts)
 		end
 	end
 
-	-- live detection data (used by the Hitbox ESP). hitChar = the character the last detect hit.
 	function api:GetDebug()
-		return { stage = det.stage, rays = det.rays, candidates = det.candidates, hit = det.hit, hitChar = det.hitChar }
-	end
-
-	-- how far ahead (world studs) the engine aims for a moving root part (velocity * lead, capped)
-	function api:GetAhead(rootPart)
-		return leadVector(rootPart, leadSeconds())
+		return { stage = det.stage, rays = det.rays, candidates = det.candidates, hit = det.hit }
 	end
 
 	function api:Unload()
@@ -948,7 +931,6 @@ local function sl(key, name, step, fmt)
 end
 
 -- switch = the setting the switch controls (no switch = just a title). keybind / mode / enums / sliders fill the inset box.
--- localSwitch = a switch that is not an engine setting (the Hitbox ESP boxes).
 local SECTIONS = {
 	{ id = "trigger", panel = "Main", title = "Triggerbot", search = "Triggerbot", words = "trigger bot auto shoot fire",
 		switch = "Enabled", keybind = true, mode = true,
@@ -981,9 +963,6 @@ local SECTIONS = {
 	{ id = "dist", panel = "Checks", title = "Distance", search = "Trigger Distance", words = "trigger distance range min max studs",
 		sliders = { sl("MinDist", "Min", 5, "%d"), sl("MaxDist", "Max", 5, "%d") } },
 
-	{ id = "viz", panel = "Tuning", title = "Hitbox ESP", search = "Trigger Hitbox ESP",
-		words = "trigger hitbox esp visualizer boxes players show see",
-		localSwitch = "Boxes" },
 	{ id = "lead", panel = "Tuning", title = "Auto Lead", search = "Trigger Auto Lead", words = "trigger lead ping prediction",
 		switch = "AutoLead",
 		sliders = { sl("LeadMs", "Lead", 5, "%d ms"), sl("MaxLeadStuds", "Max Lead", 1, "%d") } },
@@ -1010,7 +989,6 @@ function Trigger.build(container, T, H, ctx)
 	end
 	local TweenService = game:GetService("TweenService")
 	local UserInputService = game:GetService("UserInputService")
-	local RunService = game:GetService("RunService")
 
 	local new, corner, stroke, label = H.new, H.corner, H.stroke, H.label
 	local FAST = T.FAST
@@ -1566,167 +1544,6 @@ function Trigger.build(container, T, H, ctx)
 	end)
 
 	---------------------------------------------------------------------
-	-- HITBOX ESP: the boxes the triggerbot tests, drawn on every player (through walls)
-	---------------------------------------------------------------------
-	local PlayersSvc = game:GetService("Players")
-	local me = PlayersSvc.LocalPlayer
-	local boxHolder = nil
-	local boxOn = false
-	local boxes = {}      -- [part] = BoxHandleAdornment
-	local usedBuf = {}
-
-	local function getHolder()
-		if boxHolder and boxHolder.Parent then
-			return boxHolder
-		end
-		local parent = nil
-		pcall(function()
-			if gethui then
-				parent = gethui()
-			end
-		end)
-		if not parent then
-			pcall(function()
-				parent = game:GetService("CoreGui")
-			end)
-		end
-		if not parent then
-			parent = me:WaitForChild("PlayerGui")
-		end
-		boxHolder = new("Folder", { Name = "Y1TriggerBoxes" }, parent)
-		return boxHolder
-	end
-
-	local function clearBoxes()
-		for part, a in pairs(boxes) do
-			pcall(function()
-				a:Destroy()
-			end)
-		end
-		boxes = {}
-	end
-
-	local function setBoxes(on)
-		boxOn = on
-		if on then
-			getHolder()
-		else
-			clearBoxes()
-		end
-	end
-
-	local function updateBoxes()
-		local cam = workspace.CurrentCamera
-		if not cam then
-			return
-		end
-		local holder = getHolder()
-		local dbg = api:GetDebug()
-		local hitChar = nil
-		if api:IsArmed() and dbg.hit then
-			hitChar = dbg.hitChar
-		end
-
-		local tanHalf = math.tan(math.rad(cam.FieldOfView) * 0.5)
-		local vsY = math.max(1, cam.ViewportSize.Y)
-		local camPos = cam.CFrame.Position
-		local look = cam.CFrame.LookVector
-		local tol = api:Get("HitboxPx")
-		local minD = api:Get("MinDist")
-		local maxD = api:Get("MaxDist")
-		local hitPart = api:Get("HitPart")
-		local teamCheck = api:Get("TeamCheck")
-
-		local myPos = camPos
-		local myChar = me.Character
-		if myChar then
-			local mr = myChar:FindFirstChild("HumanoidRootPart")
-			if mr then
-				myPos = mr.Position
-			end
-		end
-
-		table.clear(usedBuf)
-		local all = PlayersSvc:GetPlayers()
-		for i = 1, #all do
-			local plr = all[i]
-			local char = plr.Character
-			if plr ~= me and char then
-				local hum = char:FindFirstChildOfClass("Humanoid")
-				local rootPart = char:FindFirstChild("HumanoidRootPart")
-				local skip = false
-				if not hum or not rootPart or hum.Health <= 0 then
-					skip = true
-				elseif teamCheck and plr.Team ~= nil and plr.Team == me.Team then
-					skip = true
-				else
-					local d = (rootPart.Position - myPos).Magnitude
-					if d < minD or d > maxD then
-						skip = true
-					end
-				end
-				local z = 0
-				if not skip then
-					z = (rootPart.Position - camPos):Dot(look)
-					if z <= 0.5 then
-						skip = true
-					end
-				end
-				if not skip then
-					-- same padding the engine uses: Hitbox px converted to studs at this distance
-					local pad = tol * (2 * z * tanHalf) / vsY
-					local grow = Vector3.new(pad * 2, pad * 2, pad * 2)
-					local ahead = api:GetAhead(rootPart)
-					local color = T.ICON
-					local transp = 0.82
-					if char == hitChar then
-						color = T.ACCENT
-						transp = 0.4
-					end
-					local kids = char:GetChildren()
-					for k = 1, #kids do
-						local part = kids[k]
-						if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-							local isHead = (part.Name == "Head")
-							if hitPart == "Any" or ((hitPart == "Head") == isHead) then
-								local a = boxes[part]
-								if not a or not a.Parent then
-									a = new("BoxHandleAdornment", {
-										AlwaysOnTop = true,
-										ZIndex = 1,
-									}, holder)
-									boxes[part] = a
-								end
-								a.Adornee = part
-								a.Size = part.Size + grow
-								a.CFrame = CFrame.new(part.CFrame:VectorToObjectSpace(ahead))
-								a.Color3 = color
-								a.Transparency = transp
-								usedBuf[part] = true
-							end
-						end
-					end
-				end
-			end
-		end
-
-		for part, a in pairs(boxes) do
-			if not usedBuf[part] or not part.Parent then
-				pcall(function()
-					a:Destroy()
-				end)
-				boxes[part] = nil
-			end
-		end
-	end
-
-	conns[#conns + 1] = RunService.RenderStepped:Connect(function()
-		if running and boxOn then
-			updateBoxes()
-		end
-	end)
-
-	---------------------------------------------------------------------
 	-- ONE SECTION = name + switch on top, the settings in one inset box under it
 	---------------------------------------------------------------------
 	local sections = {}   -- [id] = { outer, box, body }
@@ -1773,10 +1590,6 @@ function Trigger.build(container, T, H, ctx)
 			makeSwitch(head, api:Get(def.switch) and true or false, function(on)
 				api:Set(def.switch, on)
 				syncHint()
-			end)
-		elseif def.localSwitch then
-			makeSwitch(head, false, function(on)
-				setBoxes(on)
 			end)
 		end
 
@@ -2030,13 +1843,6 @@ function Trigger.build(container, T, H, ctx)
 		conns = {}
 		if env and env.Y1_TRIGGERBOT == api then
 			env.Y1_TRIGGERBOT = nil
-		end
-		clearBoxes()
-		if boxHolder then
-			pcall(function()
-				boxHolder:Destroy()
-			end)
-			boxHolder = nil
 		end
 		if root and root.Parent then
 			root:Destroy()
