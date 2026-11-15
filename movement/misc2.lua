@@ -64,9 +64,9 @@ local KEY_SHORT = {
 
 -- icon = the little red symbol in front of the panel title
 local PANELS = {
-	{ id = "ZeeHood", title = "Zee Hood Extras", icon = "ring", count = 4 },
+	{ id = "ZeeHood", title = "Zee Hood Extras", icon = "ring", count = 4, tall = true },
 	{ id = "Needs",   title = "Extra Needs",     icon = "diamond", count = 4 },
-	{ id = "Quality", title = "Quality Of Life", icon = "plus", count = 3 },
+	{ id = "Quality", title = "Quality Of Life", icon = "plus", count = 3, tall = true },
 }
 
 function Extra2.build(parent, T, H, ctx)
@@ -88,6 +88,9 @@ function Extra2.build(parent, T, H, ctx)
 	-- layout (same numbers as the Main page of misc1.lua)
 	local GAP = 14
 	local HEAD = 38
+	local SW_H = 28                     -- height of the Main | Extras bar (misc1.lua)
+	local SW_GAP = 3                    -- gap between the pages and that bar (misc1.lua)
+	local EXTRAS_SPACE = 14             -- space left under the middle panel, above the bar
 	local BODY_PAD_X = 14
 	local BODY_PAD_TOP = 16
 	local BODY_PAD_BOTTOM = 18
@@ -245,10 +248,15 @@ function Extra2.build(parent, T, H, ctx)
 	for i = 1, count do
 		local def = PANELS[i]
 
+		-- the two side panels reach down level with the switcher bar; the middle one stops a little above it
+		local extraH = -EXTRAS_SPACE
+		if def.tall then
+			extraH = SW_H + SW_GAP
+		end
 		local panel = new("Frame", {
 			Name = def.id .. "Panel",
 			LayoutOrder = i,
-			Size = UDim2.new(1 / count, -(GAP * (count - 1)) / count, 1, 0),
+			Size = UDim2.new(1 / count, -(GAP * (count - 1)) / count, 1, extraH),
 			BackgroundColor3 = T.SIDEBAR_BG,
 			BorderSizePixel = 0,
 			ClipsDescendants = true,
@@ -2399,7 +2407,10 @@ function Extra2.build(parent, T, H, ctx)
 		speed = 10,
 		angle = 0,
 		savedAuto = nil,
+		savedStates = nil,
 	}
+	local SB_STATES = { Enum.HumanoidStateType.FallingDown, Enum.HumanoidStateType.Ragdoll,
+		Enum.HumanoidStateType.GettingUp, Enum.HumanoidStateType.PlatformStanding }
 	-- stands the character back up and gives the Humanoid its rotation back
 	local function sbRestore()
 		local char = player.Character
@@ -2412,6 +2423,17 @@ function Extra2.build(parent, T, H, ctx)
 			hum.AutoRotate = SB.savedAuto
 		end
 		SB.savedAuto = nil
+		if hum and SB.savedStates then
+			for i = 1, #SB_STATES do
+				local was = SB.savedStates[i]
+				if was ~= nil then
+					pcall(function()
+						hum:SetStateEnabled(SB_STATES[i], was)
+					end)
+				end
+			end
+		end
+		SB.savedStates = nil
 		if hrp then
 			local look = hrp.CFrame.LookVector
 			local yaw = math.atan2(-look.X, -look.Z)
@@ -2459,6 +2481,17 @@ function Extra2.build(parent, T, H, ctx)
 		if hum.AutoRotate then
 			hum.AutoRotate = false
 		end
+		-- Upside / Side tip the body over: the Humanoid would "fall down" and stand itself up again, so those
+		-- states are switched off while Spin Bot is on (put back when it is switched off)
+		if not SB.savedStates then
+			SB.savedStates = {}
+			for i = 1, #SB_STATES do
+				pcall(function()
+					SB.savedStates[i] = hum:GetStateEnabled(SB_STATES[i])
+					hum:SetStateEnabled(SB_STATES[i], false)
+				end)
+			end
+		end
 
 		-- the way the camera looks (flat), so the non-spinning modes face where you aim
 		local yaw = 0
@@ -2484,11 +2517,16 @@ function Extra2.build(parent, T, H, ctx)
 	end
 
 	conns[#conns + 1] = RunService.Heartbeat:Connect(sbStep)
+	-- Stepped runs right before the physics, so the tipped body is not stood up again by the Humanoid
+	conns[#conns + 1] = RunService.Stepped:Connect(function(_, dt)
+		sbStep(dt)
+	end)
 	conns[#conns + 1] = RunService.RenderStepped:Connect(sbStep)
 
 	-- after a respawn the saved AutoRotate belongs to the old character
 	conns[#conns + 1] = player.CharacterAdded:Connect(function()
 		SB.savedAuto = nil
+		SB.savedStates = nil
 	end)
 
 	local function spinUnload()
