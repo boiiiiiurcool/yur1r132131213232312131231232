@@ -1133,7 +1133,7 @@ function UI.new(opts)
 	end
 
 	---------------------------------------------------------------------
-	-- SEARCH RESULTS: typing in the search box lists the features that match under it.
+	-- SEARCH RESULTS: typing in the search box lists the best 3 features that match, right under it.
 	-- Find (click a row, or press Enter for the top one) switches to that feature's tab and calls its go().
 	-- Features are added with win:AddSearch (every tab is findable by name already).
 	---------------------------------------------------------------------
@@ -1144,28 +1144,29 @@ function UI.new(opts)
 
 	do
 		local ROW = 34
-		local MAX_ROWS = 6
+		local MAX_ROWS = 3          -- never more than three results
+		local PAD = 4
+		local ROW_GAP = 2
+		local DROP_W = 260          -- same width as the search pill
+		local PILL_H = 32
 		local wantOpen = false
 		local topEntry = nil
 		local rows = {}
 
+		-- the list is a child of the WINDOW, hanging right under the search pill. That way it always sits
+		-- under the search bar, moves, scales and fades with the window and can never drift away from it.
 		local drop = new("Frame", {
 			Name = "SearchResults",
-			Size = UDim2.fromOffset(260, ROW + 8),
-			BackgroundColor3 = BG,
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, BAR_H / 2 + PILL_H / 2 + 6),
+			Size = UDim2.fromOffset(DROP_W, ROW + PAD * 2),
+			BackgroundColor3 = T.POPUP_BG,
 			BorderSizePixel = 0,
 			Visible = false,
 			ZIndex = 90,
-		}, gui)
+		}, window)
 		corner(drop, 10)
 		stroke(drop, BORDER, 1, 0)
-		local list = new("Frame", {
-			Position = UDim2.fromOffset(4, 4),
-			Size = UDim2.new(1, -8, 1, -8),
-			BackgroundTransparency = 1,
-			ZIndex = 91,
-		}, drop)
-		new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2) }, list)
 
 		local function closeDrop()
 			wantOpen = false
@@ -1252,6 +1253,7 @@ function UI.new(opts)
 				closeDrop()
 				return
 			end
+
 			local found = {}
 			for i = 1, #searchIndex do
 				local s = score(searchIndex[i], q)
@@ -1265,13 +1267,15 @@ function UI.new(opts)
 				end
 				return a.e.title < b.e.title
 			end)
+
 			local n = math.min(#found, MAX_ROWS)
 			if n == 0 then
 				local r = new("Frame", {
-					Size = UDim2.new(1, 0, 0, ROW),
+					Position = UDim2.fromOffset(PAD, PAD),
+					Size = UDim2.new(1, -PAD * 2, 0, ROW),
 					BackgroundTransparency = 1,
 					ZIndex = 92,
-				}, list)
+				}, drop)
 				label(r, "No feature found", UDim2.fromOffset(10, 0), UDim2.new(1, -20, 1, 0),
 					Enum.Font.GothamMedium, 12, DIM_TEXT).ZIndex = 93
 				rows[1] = r
@@ -1281,24 +1285,25 @@ function UI.new(opts)
 				for i = 1, n do
 					local e = found[i].e
 					local row = new("TextButton", {
-						LayoutOrder = i,
 						AutoButtonColor = false,
 						Text = "",
-						Size = UDim2.new(1, 0, 0, ROW),
+						Position = UDim2.fromOffset(PAD, PAD + (i - 1) * (ROW + ROW_GAP)),
+						Size = UDim2.new(1, -PAD * 2, 0, ROW),
 						BackgroundColor3 = HOVER_GREY,
 						BackgroundTransparency = 1,
 						BorderSizePixel = 0,
 						ZIndex = 92,
-					}, list)
+					}, drop)
 					corner(row, 7)
-					label(row, e.title, UDim2.fromOffset(10, 0), UDim2.new(1, -150, 1, 0),
+					-- name on top, the tab it lives on underneath
+					label(row, e.title, UDim2.fromOffset(10, 3), UDim2.new(1, -80, 0, 16),
 						Enum.Font.GothamMedium, 13, TEXT_COLOR).ZIndex = 93
-					label(row, e.tab, UDim2.new(1, -138, 0, 0), UDim2.fromOffset(64, ROW),
-						Enum.Font.Gotham, 11, DIM_TEXT, Enum.TextXAlignment.Right).ZIndex = 93
+					label(row, e.tab, UDim2.fromOffset(10, 19), UDim2.new(1, -80, 0, 12),
+						Enum.Font.Gotham, 10, DIM_TEXT).ZIndex = 93
 					local tag = new("TextLabel", {
 						AnchorPoint = Vector2.new(1, 0.5),
 						Position = UDim2.new(1, -8, 0.5, 0),
-						Size = UDim2.fromOffset(52, 22),
+						Size = UDim2.fromOffset(48, 22),
 						BackgroundColor3 = WELL,
 						BorderSizePixel = 0,
 						Font = Enum.Font.GothamMedium,
@@ -1325,7 +1330,10 @@ function UI.new(opts)
 					rows[i] = row
 				end
 			end
-			drop.Size = UDim2.fromOffset(drop.Size.X.Offset, n * ROW + (n - 1) * 2 + 8)
+
+			-- the box is exactly as tall as the rows that are in it
+			drop.Size = UDim2.fromOffset(DROP_W, n * ROW + (n - 1) * ROW_GAP + PAD * 2)
+			drop.Visible = true
 			wantOpen = true
 		end
 
@@ -1339,18 +1347,12 @@ function UI.new(opts)
 			end
 		end)
 
-		-- sits under the search pill and follows the window when it is dragged
-		table.insert(conns, RunService.RenderStepped:Connect(function()
-			if not wantOpen or minimized or hidden or not window.Visible or searchPill == nil then
-				drop.Visible = false
-				return
+		-- the window hides / minimizes: the list goes with it
+		window:GetPropertyChangedSignal("Visible"):Connect(function()
+			if not window.Visible then
+				closeDrop()
 			end
-			local ap = searchPill.AbsolutePosition
-			local as = searchPill.AbsoluteSize
-			drop.Size = UDim2.fromOffset(as.X, drop.Size.Y.Offset)
-			drop.Position = UDim2.fromOffset(ap.X, ap.Y + as.Y + 6)
-			drop.Visible = true
-		end))
+		end)
 
 		-- a click anywhere else closes it
 		table.insert(conns, UserInputService.InputBegan:Connect(function(input)
@@ -1373,7 +1375,6 @@ function UI.new(opts)
 			end
 		end))
 	end
-
 	---------------------------------------------------------------------
 	-- KEYBINDS PANEL (small card that spawns at the top left of the main window, top edges level)
 	--   * drag it by its title bar; it stays where you put it
