@@ -6,19 +6,18 @@
 --              Movement  : Walk Speed, Jump Power, Inf Jump, Fly, Gravity
 --              Extras    : Tickrate, Bunny Hop, No Clip, Spider Man, Float
 --              Zhd extras: No Slowdown, No Jump Cooldown   (Zee Hood only)
---            A panel scrolls when it is full. A thin divider sits between two features.
+--            A panel scrolls when it is full. A thin RED divider sits between two features.
 --   Extras = built by misc2.lua  (main.lua passes it as  Misc = { ExtrasModule = modules.Misc2 }  ).
 --
 -- Every feature shows, top to bottom:
---   [status dot] Name ................ [switch]
---   short description
---   Keybind ......... [key box]       click it, then press a key (Escape or Backspace clears it)
---   Mode ............ [drop-down]     Always = on while the switch is on, no key needed
---                                      Toggle = the keybind turns it on / off
---                                      Hold   = on only while the keybind is held down
---   Type ............ [drop-down]     Walk Speed only (Velocity / Position / Slippery)
---   sliders (name left, value right, red bar)
--- The status dot: grey = switch off, white = switch on but waiting for the key, green = active.
+--   Name ........................ [switch]
+--   one inset box with its settings:
+--     Keybind ......... [key box]       click it, then press a key (Escape or Backspace clears it)
+--     Mode ............ [drop-down]     Always = on while the switch is on, no key needed
+--                                        Toggle = the keybind turns it on / off
+--                                        Hold   = on only while the keybind is held down
+--     Type ............ [drop-down]     Walk Speed only (Velocity / Position / Slippery)
+--     sliders (name left, value right, red bar)
 -- Every switch is OFF each time the script starts. Turning a feature off (or unloading) puts back what it changed.
 --
 -- Features:
@@ -64,10 +63,21 @@ function Misc1.build(container, T, H, ctx)
 	local SMOOTH = T.SMOOTH
 
 	local GAP = 14        -- space between the three panels
-	local HEAD = 34
+	local HEAD = 38       -- height of a panel's title bar
 	local SW_W = 220      -- switcher width
 	local SW_H = 28       -- switcher height
 	local SW_GAP = 3      -- space between the pages and the switcher (smaller = closer to the panels)
+
+	-- spacing inside the panels (bigger = less cramped)
+	local BODY_PAD_X = 14
+	local BODY_PAD_TOP = 16
+	local BODY_PAD_BOTTOM = 18
+	local SECTION_GAP = 18    -- space above and below a red divider
+	local HEADER_H = 28       -- name + switch row
+	local BOX_PAD = 10        -- padding inside the settings box
+	local BOX_GAP = 9         -- space between the rows inside the settings box
+	local ROW_H = 28          -- keybind / drop-down row height
+	local SLIDER_H = 38
 
 	local root = new("Frame", {
 		Name = "MiscRoot",
@@ -114,7 +124,7 @@ function Misc1.build(container, T, H, ctx)
 	local function headerIcon(parent, kind)
 		local holder = new("Frame", {
 			Name = "Icon",
-			Position = UDim2.fromOffset(12, 9),
+			Position = UDim2.fromOffset(14, (HEAD - 16) / 2),
 			Size = UDim2.fromOffset(16, 16),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
@@ -182,8 +192,8 @@ function Misc1.build(container, T, H, ctx)
 
 		-- title bar
 		headerIcon(panel, def.icon)
-		label(panel, def.title, UDim2.fromOffset(36, 0), UDim2.new(1, -48, 0, HEAD),
-			Enum.Font.GothamBold, 13, T.TEXT_COLOR).ZIndex = 3
+		label(panel, def.title, UDim2.fromOffset(40, 0), UDim2.new(1, -54, 0, HEAD),
+			Enum.Font.GothamBold, 14, T.TEXT_COLOR).ZIndex = 3
 
 		-- thin red line under the title
 		new("Frame", {
@@ -215,13 +225,13 @@ function Misc1.build(container, T, H, ctx)
 			FillDirection = Enum.FillDirection.Vertical,
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
 			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, 10),
+			Padding = UDim.new(0, SECTION_GAP),
 		}, body)
 		new("UIPadding", {
-			PaddingLeft = UDim.new(0, 12),
-			PaddingRight = UDim.new(0, 12),
-			PaddingTop = UDim.new(0, 12),
-			PaddingBottom = UDim.new(0, 12),
+			PaddingLeft = UDim.new(0, BODY_PAD_X),
+			PaddingRight = UDim.new(0, BODY_PAD_X),
+			PaddingTop = UDim.new(0, BODY_PAD_TOP),
+			PaddingBottom = UDim.new(0, BODY_PAD_BOTTOM),
 		}, body)
 
 		bodies[def.id] = body
@@ -245,45 +255,33 @@ function Misc1.build(container, T, H, ctx)
 
 	local DEFS = {
 		{ id = "walkspeed", title = "Walk Speed", types = WALK_TYPES,
-			desc = "Velocity pushes you at that speed. Position moves your position every frame. Slippery is velocity with momentum, so you slide like on ice (more Slide = more sliding).",
 			sliders = {
 				{ key = "speed", name = "Speed", min = 16, max = 250, step = 1, value = 50, fmt = "%d" },
 				{ key = "slide", name = "Slide", min = 1, max = 10, step = 1, value = 4, fmt = "%d",
 					show = function(f) return f.type == "Slippery" end },
 			} },
 		{ id = "fly", title = "Fly",
-			desc = "Fly where the camera looks. W A S D to move, Space = up, Left Ctrl or Q = down.",
 			sliders = { { key = "speed", name = "Speed", min = 10, max = 300, step = 5, value = 60, fmt = "%d" } } },
 		{ id = "jumppower", title = "Jump Power",
-			desc = "Sets how high you jump. It also adds the jump speed on every jump, so it works even when the game keeps resetting JumpPower.",
 			sliders = { { key = "power", name = "Power", min = 20, max = 500, step = 5, value = 100, fmt = "%d" } } },
 		{ id = "gravity", title = "Gravity",
-			desc = "The normal gravity is 196. Lower = floaty, higher = heavy. Done with a force on your character, so the game cannot just set it back.",
 			sliders = { { key = "grav", name = "Gravity", min = 0, max = 400, step = 1, value = 60, fmt = "%d" } } },
 		{ id = "tickrate", title = "Tickrate",
-			desc = "How often your client sends your position to the server (Roblox flag DFIntS2PhysicsSenderRate, normally about 15 a second). Higher = less desync and better hit registration. A very low value (1) desyncs you on purpose.",
 			note = capNote,
 			sliders = { { key = "rate", name = "Send Rate", min = 1, max = 1000, step = 1, value = 240, fmt = "%d" } } },
 		{ id = "bhop", title = "Bunny Hop",
-			desc = "Hold Space: you jump the moment you land and gain speed on every hop (Gain) up to Max Speed. Steer in the air with W A S D.",
 			sliders = {
 				{ key = "speed", name = "Max Speed", min = 16, max = 150, step = 1, value = 60, fmt = "%d" },
 				{ key = "gain", name = "Gain", min = 0, max = 10, step = 1, value = 3, fmt = "%d" },
 			} },
-		{ id = "noclip", title = "No Clip",
-			desc = "Walk through walls." },
-		{ id = "infjump", title = "Inf Jump",
-			desc = "Press Space in the air for a real extra jump (your upward speed is set to the jump speed)." },
-		{ id = "spider", title = "Spider Man",
-			desc = "Walk into a wall and you climb it." },
+		{ id = "noclip", title = "No Clip" },
+		{ id = "infjump", title = "Inf Jump" },
+		{ id = "spider", title = "Spider Man" },
 		{ id = "float", title = "Float",
-			desc = "Raises your hip height so you hover above the ground.",
 			sliders = { { key = "height", name = "Height", min = 0, max = 30, step = 0.5, value = 6, fmt = "%.1f" } } },
 		{ id = "noslow", title = "No Slowdown", zee = true,
-			desc = "Removes the slowdown from crouching, reloading, shooting and melee. Speed = the walk speed you get back.",
 			sliders = { { key = "speed", name = "Speed", min = 8, max = 60, step = 1, value = 16, fmt = "%d" } } },
 		{ id = "nojumpcd", title = "No Jump Cooldown", zee = true,
-			desc = "Removes the jump cooldown / jump limit, so you can jump as often as normal. Power = your normal jump power.",
 			sliders = { { key = "power", name = "Power", min = 20, max = 150, step = 1, value = 50, fmt = "%d" } } },
 	}
 
@@ -363,21 +361,9 @@ function Misc1.build(container, T, H, ctx)
 		end
 	end
 
-	-- the little dot in front of the name: grey = off, white = on but waiting for the key, green = active
+	-- called whenever the switch, the mode or the key of a feature changes
 	local function paintStatus(f)
 		syncHint(f)
-		if not f.dot then
-			return
-		end
-		local c = T.DIM_TEXT
-		if f.enabled then
-			if isActive(f) then
-				c = T.GOOD
-			else
-				c = T.ICON_HOVER
-			end
-		end
-		TweenService:Create(f.dot, FAST, { BackgroundColor3 = c }):Play()
 	end
 
 	---------------------------------------------------------------------
@@ -437,7 +423,7 @@ function Misc1.build(container, T, H, ctx)
 
 	-- a row with a title on the left and a drop-down on the right. The list opens INSIDE the page
 	-- (it pushes the rows below it down), so nothing is cut off by the panel.
-	local OPT_H = 24
+	local OPT_H = 26
 	local DD_W = 116
 
 	local function makeDropdown(parent, order, title, options, getValue, setValue)
@@ -447,12 +433,12 @@ function Misc1.build(container, T, H, ctx)
 		R.item = new("Frame", {
 			Name = title .. "Row",
 			LayoutOrder = order,
-			Size = UDim2.new(1, 0, 0, 26),
+			Size = UDim2.new(1, 0, 0, ROW_H),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			ClipsDescendants = true,
 		}, parent)
-		label(R.item, title, UDim2.fromOffset(0, 0), UDim2.new(1, -(DD_W + 8), 0, 26),
+		label(R.item, title, UDim2.fromOffset(0, 0), UDim2.new(1, -(DD_W + 8), 0, ROW_H),
 			Enum.Font.GothamMedium, 12, T.ICON)
 
 		local btn = new("TextButton", {
@@ -460,11 +446,11 @@ function Misc1.build(container, T, H, ctx)
 			Text = "",
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, 0, 0, 0),
-			Size = UDim2.fromOffset(DD_W, 26),
+			Size = UDim2.fromOffset(DD_W, ROW_H),
 			BackgroundColor3 = T.CLUSTER_BG,
 			BorderSizePixel = 0,
 		}, R.item)
-		corner(btn, 4)
+		corner(btn, 5)
 		stroke(btn, T.BORDER, 1, 0)
 		local valLbl = label(btn, "", UDim2.fromOffset(10, 0), UDim2.new(1, -30, 1, 0),
 			Enum.Font.GothamMedium, 12, T.ICON_HOVER)
@@ -521,12 +507,12 @@ function Misc1.build(container, T, H, ctx)
 
 		-- the list of choices (sits under the button, hidden by the clipping while closed)
 		local list = new("Frame", {
-			Position = UDim2.fromOffset(0, 30),
+			Position = UDim2.fromOffset(0, ROW_H + 4),
 			Size = UDim2.new(1, 0, 0, listH),
 			BackgroundColor3 = T.CLUSTER_BG,
 			BorderSizePixel = 0,
 		}, R.item)
-		corner(list, 4)
+		corner(list, 5)
 		stroke(list, T.BORDER, 1, 0)
 
 		local optBtns = {}
@@ -548,9 +534,9 @@ function Misc1.build(container, T, H, ctx)
 
 		function R.setOpen(o)
 			R.open = o
-			local h = 26
+			local h = ROW_H
 			if o then
-				h = 26 + 4 + listH
+				h = ROW_H + 4 + listH
 			end
 			TweenService:Create(R.item, FAST, { Size = UDim2.new(1, 0, 0, h) }):Play()
 			paintArrow()
@@ -566,7 +552,7 @@ function Misc1.build(container, T, H, ctx)
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
 			}, list)
-			corner(ob, 3)
+			corner(ob, 4)
 			label(ob, options[i], UDim2.fromOffset(10, 0), UDim2.new(1, -20, 1, 0),
 				Enum.Font.GothamMedium, 12, T.TEXT_COLOR)
 			optBtns[i] = ob
@@ -601,19 +587,19 @@ function Misc1.build(container, T, H, ctx)
 		S.row = new("Frame", {
 			Name = sl.name .. "Slider",
 			LayoutOrder = order,
-			Size = UDim2.new(1, 0, 0, 34),
+			Size = UDim2.new(1, 0, 0, SLIDER_H),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 		}, parent)
-		label(S.row, sl.name, UDim2.fromOffset(0, 0), UDim2.new(0.6, 0, 0, 16),
+		label(S.row, sl.name, UDim2.fromOffset(0, 0), UDim2.new(0.6, 0, 0, 18),
 			Enum.Font.GothamMedium, 12, T.TEXT_COLOR)
-		local valLbl = label(S.row, "", UDim2.new(0.6, 0, 0, 0), UDim2.new(0.4, 0, 0, 16),
+		local valLbl = label(S.row, "", UDim2.new(0.6, 0, 0, 0), UDim2.new(0.4, 0, 0, 18),
 			Enum.Font.GothamMedium, 12, T.DIM_TEXT, Enum.TextXAlignment.Right)
 
 		local track = new("Frame", {
-			Position = UDim2.fromOffset(3, 23),
+			Position = UDim2.fromOffset(3, 27),
 			Size = UDim2.new(1, -6, 0, 6),
-			BackgroundColor3 = T.WELL,
+			BackgroundColor3 = T.BORDER,
 			BorderSizePixel = 0,
 		}, S.row)
 		corner(track, 3)
@@ -635,7 +621,7 @@ function Misc1.build(container, T, H, ctx)
 		local hit = new("TextButton", {
 			AutoButtonColor = false,
 			Text = "",
-			Position = UDim2.fromOffset(0, 14),
+			Position = UDim2.fromOffset(0, 18),
 			Size = UDim2.new(1, 0, 0, 20),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
@@ -692,6 +678,7 @@ function Misc1.build(container, T, H, ctx)
 
 	---------------------------------------------------------------------
 	-- ONE FEATURE = ONE SECTION INSIDE A PANEL
+	--   name + switch on top, the settings in one inset box under it
 	---------------------------------------------------------------------
 	local function buildFeature(body, f, order)
 		local d = f.def
@@ -707,7 +694,7 @@ function Misc1.build(container, T, H, ctx)
 			FillDirection = Enum.FillDirection.Vertical,
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
 			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, 7),
+			Padding = UDim.new(0, 12),
 		}, sec)
 		local n = 0
 		local function nextOrder()
@@ -715,43 +702,22 @@ function Misc1.build(container, T, H, ctx)
 			return n
 		end
 
-		-- header: status dot, name, switch
+		-- header: name, switch
 		local head = new("Frame", {
 			Name = "Header",
 			LayoutOrder = nextOrder(),
-			Size = UDim2.new(1, 0, 0, 24),
+			Size = UDim2.new(1, 0, 0, HEADER_H),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 		}, sec)
-		f.dot = new("Frame", {
-			AnchorPoint = Vector2.new(0, 0.5),
-			Position = UDim2.new(0, 0, 0.5, 0),
-			Size = UDim2.fromOffset(8, 8),
-			BackgroundColor3 = T.DIM_TEXT,
-			BorderSizePixel = 0,
-		}, head)
-		corner(f.dot, 100)
-		label(head, d.title, UDim2.fromOffset(16, 0), UDim2.new(1, -64, 1, 0),
-			Enum.Font.GothamBold, 13, T.TEXT_COLOR)
+		label(head, d.title, UDim2.fromOffset(2, 0), UDim2.new(1, -56, 1, 0),
+			Enum.Font.GothamBold, 14, T.TEXT_COLOR)
 		makeSwitch(head, false, function(on)
 			f.enabled = on
 			f.toggled = false
 			f.held = false
 			paintStatus(f)
 		end)
-
-		-- description (small, dim)
-		local text = d.desc or ""
-		if d.zee then
-			text = "Zee Hood only. " .. text
-		end
-		local desc = label(sec, text, UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 0),
-			Enum.Font.Gotham, 11, T.DIM_TEXT)
-		desc.LayoutOrder = nextOrder()
-		desc.TextWrapped = true
-		desc.TextTruncate = Enum.TextTruncate.None
-		desc.TextYAlignment = Enum.TextYAlignment.Top
-		desc.AutomaticSize = Enum.AutomaticSize.Y
 
 		-- warning (for example: your executor has no setfflag)
 		if d.note then
@@ -767,21 +733,50 @@ function Misc1.build(container, T, H, ctx)
 			end
 		end
 
+		-- the inset box that holds this feature's settings
+		local box = new("Frame", {
+			Name = "Settings",
+			LayoutOrder = nextOrder(),
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundColor3 = T.WELL,
+			BorderSizePixel = 0,
+		}, sec)
+		corner(box, 6)
+		stroke(box, T.BORDER, 1, 0)
+		new("UIPadding", {
+			PaddingLeft = UDim.new(0, BOX_PAD),
+			PaddingRight = UDim.new(0, BOX_PAD),
+			PaddingTop = UDim.new(0, BOX_PAD),
+			PaddingBottom = UDim.new(0, BOX_PAD),
+		}, box)
+		new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Vertical,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, BOX_GAP),
+		}, box)
+		local bn = 0
+		local function boxOrder()
+			bn = bn + 1
+			return bn
+		end
+
 		-- keybind row
 		local kr = new("Frame", {
 			Name = "KeybindRow",
-			LayoutOrder = nextOrder(),
-			Size = UDim2.new(1, 0, 0, 26),
+			LayoutOrder = boxOrder(),
+			Size = UDim2.new(1, 0, 0, ROW_H),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-		}, sec)
+		}, box)
 		label(kr, "Keybind", UDim2.fromOffset(0, 0), UDim2.new(1, -(DD_W + 8), 1, 0),
 			Enum.Font.GothamMedium, 12, T.ICON)
 		f.keyBtn = new("TextButton", {
 			AutoButtonColor = false,
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, 0, 0, 0),
-			Size = UDim2.fromOffset(DD_W, 26),
+			Size = UDim2.fromOffset(DD_W, ROW_H),
 			BackgroundColor3 = T.CLUSTER_BG,
 			BorderSizePixel = 0,
 			Font = Enum.Font.GothamMedium,
@@ -790,7 +785,7 @@ function Misc1.build(container, T, H, ctx)
 			Text = keyName(f),
 			TextTruncate = Enum.TextTruncate.AtEnd,
 		}, kr)
-		corner(f.keyBtn, 4)
+		corner(f.keyBtn, 5)
 		stroke(f.keyBtn, T.BORDER, 1, 0)
 		f.keyBtn.MouseEnter:Connect(function()
 			TweenService:Create(f.keyBtn, FAST, { BackgroundColor3 = T.HOVER_GREY }):Play()
@@ -811,7 +806,7 @@ function Misc1.build(container, T, H, ctx)
 		end)
 
 		-- mode drop-down
-		makeDropdown(sec, nextOrder(), "Mode", MODES,
+		makeDropdown(box, boxOrder(), "Mode", MODES,
 			function()
 				return f.mode
 			end,
@@ -833,7 +828,7 @@ function Misc1.build(container, T, H, ctx)
 			end
 		end
 		if d.types then
-			makeDropdown(sec, nextOrder(), "Type", d.types,
+			makeDropdown(box, boxOrder(), "Type", d.types,
 				function()
 					return f.type
 				end,
@@ -847,7 +842,7 @@ function Misc1.build(container, T, H, ctx)
 		-- sliders
 		if d.sliders then
 			for i = 1, #d.sliders do
-				sliderRows[#sliderRows + 1] = makeSlider(sec, nextOrder(), f, d.sliders[i])
+				sliderRows[#sliderRows + 1] = makeSlider(box, boxOrder(), f, d.sliders[i])
 			end
 		end
 		applyShow()
@@ -861,13 +856,14 @@ function Misc1.build(container, T, H, ctx)
 		local order = 0
 		for k = 1, #pdef.ids do
 			if k > 1 then
-				-- thin divider between two features
+				-- thin RED divider between two features
 				order = order + 1
 				new("Frame", {
 					Name = "Divider",
 					LayoutOrder = order,
 					Size = UDim2.new(1, 0, 0, 1),
-					BackgroundColor3 = T.BORDER,
+					BackgroundColor3 = T.ACCENT,
+					BackgroundTransparency = 0.45,
 					BorderSizePixel = 0,
 				}, pbody)
 			end
