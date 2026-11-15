@@ -30,7 +30,8 @@
 -- AUTO BUY        Left-clicks the Head of every shop model in workspace.Ignored.Shop that is in Range
 --                 ("[Full Armor]" = armor, "[Stim]" = stim, everything else = food). Needs fireclickdetector.
 -- ORBIT           Set a keybind, press it to orbit the player closest to your mouse, press it again to stop.
--- SPIN BOT        Turns only YOUR character (Normal / Upside / Side / Backwards), the camera is untouched.
+-- SPIN BOT        Turns only YOUR character: Normal = spins around, Upside = front flips, Side = cartwheels,
+--                 Backwards = faces away from where you aim. The camera is untouched.
 -- HITBOX EXPANDER Makes every other player's HumanoidRootPart bigger on YOUR client (restored when switched off).
 -- ANIMATIONS      Swaps your Idle / Walk / Run / Jump / Fall / Swim / Climb animations for an R15 package.
 -- ANTI AFK        Blocks the idle kick with a fake click when Roblox says you went idle.
@@ -2502,13 +2503,16 @@ function Extra2.build(parent, T, H, ctx)
 		end
 
 		local rot = nil
+		-- the angle keeps growing for every mode that spins
+		SB.angle = (SB.angle + SB.speed * 36 * math.rad(1) * dt) % (math.pi * 2)
 		if SB.mode == "Normal" then
-			SB.angle = (SB.angle + SB.speed * 36 * math.rad(1) * dt) % (math.pi * 2)
 			rot = CFrame.Angles(0, SB.angle, 0)
 		elseif SB.mode == "Upside" then
-			rot = CFrame.Angles(0, yaw, 0) * CFrame.Angles(0, 0, math.pi)
+			-- front flips: you roll over forwards through upside down, facing where you aim
+			rot = CFrame.Angles(0, yaw, 0) * CFrame.Angles(-SB.angle, 0, 0)
 		elseif SB.mode == "Side" then
-			rot = CFrame.Angles(0, yaw, 0) * CFrame.Angles(0, 0, math.pi / 2)
+			-- cartwheels: you roll over sideways, facing where you aim
+			rot = CFrame.Angles(0, yaw, 0) * CFrame.Angles(0, 0, SB.angle)
 		else
 			rot = CFrame.Angles(0, yaw + math.pi, 0)
 		end
