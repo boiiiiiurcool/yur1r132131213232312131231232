@@ -37,6 +37,9 @@
 
 local Extra2 = {}
 
+-- where the spoofer files live (used only when main.lua did not pass them in)
+local SPOOFER_BASE = "https://raw.githubusercontent.com/boiiiiiurcool/yur1r132131213232312131231232/main/"
+
 -- extra words the search box also matches for each feature (the feature name is always matched)
 local SEARCH_WORDS = {
 	tracer = "bullet tracer beam shot color rainbow zhd zee hood",
@@ -124,7 +127,7 @@ function Extra2.build(parent, T, H, ctx)
 	end
 
 	-- a spoofer module handed over by main.lua (ctx.Spoofer1Module) or found in getgenv().Y1_MODULES.Spoofer1
-	local function findModule(ctxKey, genvKey)
+	local function findModule(ctxKey, genvKey, fileName)
 		local m = nil
 		if type(ctx) == "table" then
 			m = ctx[ctxKey]
@@ -143,7 +146,20 @@ function Extra2.build(parent, T, H, ctx)
 		if type(m) == "table" and type(m.build) == "function" then
 			return m
 		end
-		return nil
+		-- main.lua did not hand it over (an older main.lua, say): download it from the repo here
+		local url = SPOOFER_BASE .. fileName
+		local okF, res = pcall(function()
+			local src = game:HttpGet(url .. "?v=" .. tostring(os.time()))
+			local fn, err = loadstring(src, "=" .. fileName)
+			if not fn then
+				error("could not compile " .. fileName .. ": " .. tostring(err))
+			end
+			return fn()
+		end)
+		if okF and type(res) == "table" and type(res.build) == "function" then
+			return res
+		end
+		return nil, tostring(res)
 	end
 
 	---------------------------------------------------------------------
@@ -1220,7 +1236,10 @@ function Extra2.build(parent, T, H, ctx)
 		}, bodies[pid])
 
 		local handle = nil
-		local mod = findModule(ctxKey, genvKey)
+		local mod, whyNot = findModule(ctxKey, genvKey, fileName)
+		if not mod and whyNot then
+			warn("[misc2] " .. fileName .. ": " .. whyNot)
+		end
 		if mod then
 			local ok, res = pcall(mod.build, holder, T, H, ctx)
 			if ok and type(res) == "table" then
