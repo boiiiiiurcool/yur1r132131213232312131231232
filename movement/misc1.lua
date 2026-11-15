@@ -64,6 +64,7 @@ function Misc1.build(container, T, H, ctx)
 	local SMOOTH = T.SMOOTH
 
 	local GAP = 14        -- space between the three panels
+	local EXTRAS_SPACE = 14   -- space under the middle panel, above the Main | Extras bar
 	local HEAD = 38       -- height of a panel's title bar
 	local SW_W = 220      -- switcher width
 	local SW_H = 28       -- switcher height
@@ -175,14 +176,13 @@ function Misc1.build(container, T, H, ctx)
 	end
 
 	local bodies = {}
-	local badges = {}
 	local count = #PANELS
 
 	for i = 1, count do
 		local def = PANELS[i]
 
 		-- the side panels get the height of the switcher bar added, so their bottoms are level with it
-		local extraH = 0
+		local extraH = -EXTRAS_SPACE
 		if def.tall then
 			extraH = SW_H + SW_GAP
 		end
@@ -202,22 +202,21 @@ function Misc1.build(container, T, H, ctx)
 		label(panel, def.title, UDim2.fromOffset(40, 0), UDim2.new(1, -108, 0, HEAD),
 			Enum.Font.GothamBold, 14, T.TEXT_COLOR).ZIndex = 3
 
-		-- badge on the right of the title: how many options are ON out of how many the panel has (for example 2/5)
+		-- badge on the right of the title: how many options are in this panel (for example 5)
 		local badge = new("Frame", {
 			Name = "Badge",
 			AnchorPoint = Vector2.new(1, 0.5),
 			Position = UDim2.new(1, -12, 0, HEAD / 2),
-			Size = UDim2.fromOffset(46, 20),
+			Size = UDim2.fromOffset(26, 20),
 			BackgroundColor3 = T.CLUSTER_BG,
 			BorderSizePixel = 0,
 			ZIndex = 3,
 		}, panel)
-		corner(badge, 10)
-		local badgeLine = stroke(badge, T.BORDER, 1, 0)
-		local badgeText = label(badge, "0/" .. tostring(#def.ids), UDim2.fromScale(0, 0), UDim2.fromScale(1, 1),
-			Enum.Font.GothamMedium, 11, T.DIM_TEXT, Enum.TextXAlignment.Center)
+		corner(badge, 4)
+		stroke(badge, T.BORDER, 1, 0)
+		local badgeText = label(badge, tostring(#def.ids), UDim2.fromScale(0, 0), UDim2.fromScale(1, 1),
+			Enum.Font.GothamMedium, 12, T.ICON, Enum.TextXAlignment.Center)
 		badgeText.ZIndex = 4
-		badges[def.id] = { text = badgeText, line = badgeLine, total = #def.ids }
 
 		-- thin red line under the title
 		new("Frame", {
@@ -385,35 +384,9 @@ function Misc1.build(container, T, H, ctx)
 		end
 	end
 
-	-- the 2/5 badge of every panel: how many of its options are switched on
-	local function refreshBadges()
-		for pi = 1, #PANELS do
-			local pdef = PANELS[pi]
-			local b = badges[pdef.id]
-			if b then
-				local on = 0
-				for k = 1, #pdef.ids do
-					if F[pdef.ids[k]].enabled then
-						on = on + 1
-					end
-				end
-				b.text.Text = tostring(on) .. "/" .. tostring(b.total)
-				local textColor = T.DIM_TEXT
-				local lineColor = T.BORDER
-				if on > 0 then
-					textColor = T.ACCENT
-					lineColor = T.ACCENT
-				end
-				TweenService:Create(b.text, FAST, { TextColor3 = textColor }):Play()
-				TweenService:Create(b.line, FAST, { Color = lineColor }):Play()
-			end
-		end
-	end
-
 	-- called whenever the switch, the mode or the key of a feature changes
 	local function paintStatus(f)
 		syncHint(f)
-		refreshBadges()
 	end
 
 	---------------------------------------------------------------------
