@@ -15,15 +15,15 @@ local Misc1 = {}
 
 -- h = height of the panel as a share of the page (Movement tallest, Zhd extras shortest)
 local PANELS = {
-	{ id = "Movement",  title = "Movement",   h = 0.96 },
-	{ id = "Extras",    title = "Extras",     h = 0.78 },
-	{ id = "ZhdExtras", title = "Zhd extras", h = 0.60 },
+	{ id = "Movement",  title = "Movement",   h = 0.96, icon = "chevrons" },
+	{ id = "Extras",    title = "Extras",     h = 0.78, icon = "plus" },
+	{ id = "ZhdExtras", title = "Zhd extras", h = 0.60, icon = "diamond" },
 }
 
 function Misc1.build(container, T, H, ctx)
 	local TweenService = game:GetService("TweenService")
 
-	local GAP = 8
+	local GAP = 14        -- space between the three panels
 	local HEAD = 34
 	local SW_W = 150      -- switcher width
 	local SW_H = 28       -- switcher height
@@ -73,6 +73,59 @@ function Misc1.build(container, T, H, ctx)
 		Padding = UDim.new(0, GAP),
 	}, mainPage)
 
+	-- small calm-red icon drawn with frames (16x16), sits left of a panel title
+	local function headerIcon(parent, kind)
+		local holder = H.new("Frame", {
+			Name = "Icon",
+			Position = UDim2.fromOffset(12, 9),
+			Size = UDim2.fromOffset(16, 16),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			ZIndex = 3,
+		}, parent)
+
+		local function bit(w, h, x, y, rot)
+			local f = H.new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(0.5, x, 0.5, y),
+				Size = UDim2.fromOffset(w, h),
+				Rotation = rot or 0,
+				BackgroundColor3 = T.ACCENT,
+				BorderSizePixel = 0,
+				ZIndex = 4,
+			}, holder)
+			H.corner(f, 1)
+			return f
+		end
+
+		if kind == "chevrons" then
+			-- two ">" one after the other (movement)
+			for k = 0, 1 do
+				local x = -3 + k * 5
+				bit(7, 2, x, -2.5, 45)
+				bit(7, 2, x, 2.5, -45)
+			end
+		elseif kind == "plus" then
+			bit(12, 2, 0, 0)
+			bit(2, 12, 0, 0)
+		else
+			-- diamond outline with a dot in the middle
+			local d = H.new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromOffset(9, 9),
+				Rotation = 45,
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				ZIndex = 4,
+			}, holder)
+			H.corner(d, 2)
+			H.stroke(d, T.ACCENT, 2, 0)
+			bit(3, 3, 0, 0)
+		end
+		return holder
+	end
+
 	local bodies = {}
 	local count = #PANELS
 
@@ -91,7 +144,8 @@ function Misc1.build(container, T, H, ctx)
 		H.stroke(panel, T.BORDER, 1, 0)
 
 		-- title bar
-		H.label(panel, def.title, UDim2.fromOffset(12, 0), UDim2.new(1, -24, 0, HEAD),
+		headerIcon(panel, def.icon)
+		H.label(panel, def.title, UDim2.fromOffset(36, 0), UDim2.new(1, -48, 0, HEAD),
 			Enum.Font.GothamBold, 13, T.TEXT_COLOR).ZIndex = 3
 
 		-- thin red line under the title
