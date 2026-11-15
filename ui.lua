@@ -1693,6 +1693,10 @@ function UI.new(opts)
 		local dragStart = nil
 		local startOff = nil
 		kbHead.InputBegan:Connect(function(input)
+			-- the panel can only be moved while the window is open; hidden or minimized it stays where it is
+			if hidden or minimized then
+				return
+			end
 			if input.UserInputType == Enum.UserInputType.MouseButton1
 				or input.UserInputType == Enum.UserInputType.Touch then
 				kbDragging = true
@@ -2407,6 +2411,10 @@ function UI.new(opts)
 			local dragStart = nil
 			local startOff = nil
 			wm.InputBegan:Connect(function(input)
+				-- the watermark can only be moved while the window is open
+				if hidden or minimized then
+					return
+				end
 				if input.UserInputType == Enum.UserInputType.MouseButton1
 					or input.UserInputType == Enum.UserInputType.Touch then
 					wmDragging = true
