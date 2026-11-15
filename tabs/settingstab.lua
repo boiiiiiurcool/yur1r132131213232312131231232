@@ -2,17 +2,17 @@
 -- ASCII only, conservative syntax (no += and no continue).
 --
 -- ui.lua calls  SettingsModule.build(container, T, H, ctx)  (main.lua loads it as modules.SettingsTab).
---   ctx.Win = the window, ctx.HideKey = the key that hides the window (main.lua passes it, only used for the text).
--- Two panels, same look as the Misc tab:
---   Interface : Watermark switch, Unload Script button (click twice to confirm)
---   About     : account name, hide key, how long the window has been running
--- Add more rows with  addRow(panelBody, ...)  helpers below.
+--   ctx.Win = the window. ctx.HideKey = the key the window starts with (default RightShift).
+-- One panel, three sections with a red divider between them:
+--   Toggle UI : a keybind (click it, press a key; Backspace = no key) that hides / shows the window
+--   Watermark : Show Watermark switch
+--   Script    : Unload Script button (click twice to confirm)
+-- main.lua gives ui.lua an unused HideKey on purpose, so this tab is the only thing that hides the window.
 
 local SettingsTab = {}
 
 function SettingsTab.build(container, T, H, ctx)
 	local TweenService = game:GetService("TweenService")
-	local RunService = game:GetService("RunService")
 	local new, corner, stroke, label = H.new, H.corner, H.stroke, H.label
 	local FAST, SMOOTH = T.FAST, T.SMOOTH
 
@@ -20,13 +20,16 @@ function SettingsTab.build(container, T, H, ctx)
 	local BODY_PAD_X, BODY_PAD_TOP, BODY_PAD_BOTTOM = 14, 16, 18
 	local SECTION_GAP, HEADER_H = 18, 28
 	local BOX_PAD, BOX_GAP, ROW_H = 10, 9, 28
+	local MAX_W = 460          -- the sections stay this wide in the middle of the big panel
+	local DD_W = 116
 
+	local UserInputService = game:GetService("UserInputService")
 	local win = nil
-	local hideKey = "RightShift"
+	local hideKey = Enum.KeyCode.RightShift
 	if type(ctx) == "table" then
 		win = ctx.Win
-		if ctx.HideKey then
-			hideKey = tostring(ctx.HideKey.Name or ctx.HideKey)
+		if typeof(ctx.HideKey) == "EnumItem" then
+			hideKey = ctx.HideKey
 		end
 	end
 
@@ -36,18 +39,13 @@ function SettingsTab.build(container, T, H, ctx)
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 	}, container)
-	new("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, GAP),
-	}, root)
 
 	-- a panel with a title bar and a scrolling body; returns the body
 	local function makePanel(order, title, badgeText)
 		local panel = new("Frame", {
 			Name = title .. "Panel",
 			LayoutOrder = order,
-			Size = UDim2.new(1 / 3, -(GAP * 2) / 3, 1, -14),
+			Size = UDim2.new(1, 0, 1, -14),
 			BackgroundColor3 = T.SIDEBAR_BG,
 			BorderSizePixel = 0,
 			ClipsDescendants = true,
@@ -114,6 +112,7 @@ function SettingsTab.build(container, T, H, ctx)
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 		}, body)
+		new("UISizeConstraint", { MaxSize = Vector2.new(MAX_W, 100000) }, sec)
 		new("UIListLayout", {
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Padding = UDim.new(0, 12),
@@ -240,11 +239,114 @@ function SettingsTab.build(container, T, H, ctx)
 	end
 
 	---------------------------------------------------------------------
-	-- INTERFACE
+	-- THE PANEL
 	---------------------------------------------------------------------
-	local interface = makePanel(1, "Interface", "2")
+	local body = makePanel(1, "Settings", "3")
 
-	local wmSec = makeSection(interface, 1, "Watermark")
+	local function divider(order)
+		local d = new("Frame", {
+			LayoutOrder = order,
+			Size = UDim2.new(1, 0, 0, 1),
+			BackgroundColor3 = T.ACCENT,
+			BackgroundTransparency = 0.45,
+			BorderSizePixel = 0,
+		}, body)
+		new("UISizeConstraint", { MaxSize = Vector2.new(MAX_W, 1) }, d)
+	end
+
+	local conns = {}
+
+	-- TOGGLE UI: keybind
+	local keySec = makeSection(body, 1, "Toggle UI")
+	local keyRow = new("Frame", {
+		LayoutOrder = keySec.order(),
+		Size = UDim2.new(1, 0, 0, ROW_H),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+	}, keySec.box)
+	label(keyRow, "Keybind", UDim2.fromOffset(0, 0), UDim2.new(1, -(DD_W + 8), 1, 0),
+		Enum.Font.GothamMedium, 12, T.ICON)
+	local keyBtn = new("TextButton", {
+		AutoButtonColor = false,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 0, 0, 0),
+		Size = UDim2.fromOffset(DD_W, ROW_H),
+		BackgroundColor3 = T.CLUSTER_BG,
+		BorderSizePixel = 0,
+		Font = Enum.Font.GothamMedium,
+		TextSize = 12,
+		TextColor3 = T.ICON_HOVER,
+		Text = "",
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	}, keyRow)
+	corner(keyBtn, 5)
+	local keyStroke = stroke(keyBtn, T.BORDER, 1, 0)
+	keyBtn.MouseEnter:Connect(function()
+		TweenService:Create(keyBtn, FAST, { BackgroundColor3 = T.HOVER_GREY }):Play()
+	end)
+	keyBtn.MouseLeave:Connect(function()
+		TweenService:Create(keyBtn, FAST, { BackgroundColor3 = T.CLUSTER_BG }):Play()
+	end)
+	local listening = false
+	local function showKey()
+		if hideKey then
+			keyBtn.Text = hideKey.Name
+		else
+			keyBtn.Text = "None"
+		end
+		TweenService:Create(keyStroke, FAST, { Color = T.BORDER }):Play()
+	end
+	showKey()
+	keyBtn.Activated:Connect(function()
+		listening = not listening
+		if listening then
+			keyBtn.Text = "Press a key..."
+			TweenService:Create(keyStroke, FAST, { Color = T.ACCENT }):Play()
+		else
+			showKey()
+		end
+	end)
+	local hint = label(keySec.box, "Click the box, then press a key. Backspace clears it.", UDim2.fromOffset(0, 0),
+		UDim2.new(1, 0, 0, 0), Enum.Font.Gotham, 11, T.DIM_TEXT)
+	hint.LayoutOrder = keySec.order()
+	hint.TextWrapped = true
+	hint.AutomaticSize = Enum.AutomaticSize.Y
+
+	-- the window counts as hidden when it is not on screen (works with the hide animation too)
+	local function isHidden()
+		local w = win and win.Window
+		if not w then
+			return false
+		end
+		return (not w.Visible) or w.GroupTransparency > 0.5
+	end
+
+	conns[#conns + 1] = UserInputService.InputBegan:Connect(function(input, processed)
+		if input.UserInputType ~= Enum.UserInputType.Keyboard then
+			return
+		end
+		if listening then
+			listening = false
+			if input.KeyCode == Enum.KeyCode.Backspace then
+				hideKey = nil
+			elseif input.KeyCode ~= Enum.KeyCode.Escape then
+				hideKey = input.KeyCode
+			end
+			showKey()
+			return
+		end
+		if processed or not hideKey then
+			return
+		end
+		if input.KeyCode == hideKey and win and type(win.SetHidden) == "function" then
+			win:SetHidden(not isHidden())
+		end
+	end)
+
+	divider(2)
+
+	-- WATERMARK
+	local wmSec = makeSection(body, 3, "Watermark")
 	local function findWatermark()
 		if win and win.Gui then
 			return win.Gui:FindFirstChild("Watermark", true)
@@ -259,7 +361,6 @@ function SettingsTab.build(container, T, H, ctx)
 		end
 	end)
 	if not wmStart then
-		-- no watermark in this window (Watermark = false in main.lua), so the switch has nothing to do
 		local n = label(wmSec.box, "The watermark is switched off in main.lua.", UDim2.fromOffset(0, 0),
 			UDim2.new(1, 0, 0, 0), Enum.Font.Gotham, 11, T.DIM_TEXT)
 		n.LayoutOrder = wmSec.order()
@@ -267,18 +368,12 @@ function SettingsTab.build(container, T, H, ctx)
 		n.AutomaticSize = Enum.AutomaticSize.Y
 	end
 
-	new("Frame", {
-		LayoutOrder = 2,
-		Size = UDim2.new(1, 0, 0, 1),
-		BackgroundColor3 = T.ACCENT,
-		BackgroundTransparency = 0.45,
-		BorderSizePixel = 0,
-	}, interface)
+	divider(4)
 
-	local scriptSec = makeSection(interface, 3, "Script")
+	-- SCRIPT: unload
+	local scriptSec = makeSection(body, 5, "Script")
 	local armed = false
-	local unloadBtn = nil
-	unloadBtn = buttonRow(scriptSec, "Unload Script", function(b)
+	buttonRow(scriptSec, "Unload Script", function(b)
 		if not armed then
 			armed = true
 			b.Text = "Click again to unload"
@@ -297,57 +392,13 @@ function SettingsTab.build(container, T, H, ctx)
 		end
 	end)
 
-	---------------------------------------------------------------------
-	-- ABOUT
-	---------------------------------------------------------------------
-	local about = makePanel(2, "About", "3")
-	local infoSec = makeSection(about, 1, "Session")
-
-	local account = "Guest"
-	local startedAt = os.time()
-	local okG, g = pcall(function()
-		return getgenv()
-	end)
-	if okG and type(g) == "table" and type(g.Y1_SESSION) == "table" then
-		if type(g.Y1_SESSION.username) == "string" and g.Y1_SESSION.username ~= "" then
-			account = g.Y1_SESSION.username
-		end
-		if type(g.Y1_SESSION.started) == "number" then
-			startedAt = g.Y1_SESSION.started
-		end
-	end
-	infoRow(infoSec, "Account", account)
-	infoRow(infoSec, "Hide Key", hideKey)
-	local timeLbl = infoRow(infoSec, "Running For", "0m")
-
-	local running = true
-	local conn = nil
-	local acc = 0
-	conn = RunService.Heartbeat:Connect(function(dt)
-		acc = acc + dt
-		if acc < 1 then
-			return
-		end
-		acc = 0
-		if not running or not timeLbl.Parent then
-			return
-		end
-		local secs = math.max(0, os.time() - startedAt)
-		local h = math.floor(secs / 3600)
-		local m = math.floor((secs % 3600) / 60)
-		if h > 0 then
-			timeLbl.Text = string.format("%dh %dm", h, m)
-		else
-			timeLbl.Text = string.format("%dm %ds", m, secs % 60)
-		end
-	end)
-
 	local function unload()
-		running = false
-		if conn then
-			conn:Disconnect()
-			conn = nil
+		for i = 1, #conns do
+			pcall(function()
+				conns[i]:Disconnect()
+			end)
 		end
+		conns = {}
 		pcall(function()
 			root:Destroy()
 		end)
