@@ -1132,7 +1132,7 @@ function UI.new(opts)
 		end
 	end
 
----------------------------------------------------------------------
+	---------------------------------------------------------------------
 	-- SEARCH RESULTS: typing in the search box lists the best 3 features that match, right under it.
 	-- Find (click a row, or press Enter for the top one) switches to that feature's tab and calls its go().
 	-- Features are added with win:AddSearch (every tab is findable by name already).
