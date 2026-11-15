@@ -41,13 +41,13 @@
 
 local Misc1 = {}
 
--- h = height of the panel as a share of the page (Movement tallest, Zhd extras shortest)
+-- h = height of the panel as a share of the page (all three panels use the same height)
 local PANELS = {
 	{ id = "Movement",  title = "Movement",   h = 0.96, icon = "chevrons",
 		ids = { "walkspeed", "jumppower", "infjump", "fly", "gravity" } },
-	{ id = "Extras",    title = "Extras",     h = 0.78, icon = "plus",
+	{ id = "Extras",    title = "Extras",     h = 0.96, icon = "plus",
 		ids = { "tickrate", "bhop", "noclip", "spider", "float" } },
-	{ id = "ZhdExtras", title = "Zhd extras", h = 0.60, icon = "diamond",
+	{ id = "ZhdExtras", title = "Zhd extras", h = 0.96, icon = "diamond",
 		ids = { "noslow", "nojumpcd" } },
 }
 
